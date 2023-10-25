@@ -5,6 +5,7 @@ Module featuring routines that enable easy access to files stored in Taroko, Ber
 import xarray as xr; import pandas as pd; 
 from datetime import datetime, timedelta; 
 import numbers
+# Import mapper is missing to run standardize_coords() on dataset.ds_loader(). Add when I sort out conda environment problems. 
 
 # Route to notable SST products.
 urls = dict(); 
