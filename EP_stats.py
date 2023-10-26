@@ -7,7 +7,6 @@ import pandas as pd; from datetime import datetime, timedelta;
 def seasonal_cycle( data, n_terms ):
     ''' 
     Use least squares to fit a trend and seasonal cycle to data. 
-    Inputs: dt must be given in units of seconds to be compatible with modview.timetools
     '''
     if len( data.values.flatten().shape ) > 1:
         print('I can only process one-dimensional data')
