@@ -1,0 +1,18 @@
+--------------------------------------- Software requirement specification for EastPac repository
+--------------- intercomparison module
+
+Introduction: 
+Purpose - to distribute and manage operations across multiple realizations of a model, and deliver results from those operations in a legible and easy-to-access manner.
+Intended audience - people working with model output that have to handle dozens of folders with hundreds/thousands of files each, and perform same operations again and again across those files. 
+Intended use - for now, use with Eastern Pacific simulations of CESM. The workflow starts with specifying model configurations, indicating their respective directories to load data, and then running operations on that data. 
+Product scope - the ultimate goal is to provide a shell or interface that holds access to all different models, rather than to bake in specific commands or analysis tools (see other modules for that).
+Definitions and acronyms - 
+
+Overall description: 
+User needs - to easily access datafiles from a given model run without having to individually look through all the folders and without repetitively typing filepaths into notebook.
+
+Assumptions and dependencies - assume that all model files are netcdf and can be loaded onto xarray. Also, assume that each model run/config is stored in its individual folder and that its files have some sort of serialized naming convention. 
+Will also need pandas, re(gex), xarray, os, and other modules. 
+
+System features and requirements: 
+
