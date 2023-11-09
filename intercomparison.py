@@ -9,6 +9,21 @@ def do_nothing( data_in ):
     # Is useful as placeholder in some more complex functions
     return data_in
 
+class execute_compare:
+    '''
+    This is the interface you will use to distribute operations on data managed by 
+    instances of intercomparison. Operations will be separated into three categories, 
+    1. Operations done upon loading data (file selection, subsetting, etc.)
+    2. Analysis operations (are we computing spectra, means, seasonal cycles?)
+    3. What is to be done with the results? (save to file, plot, group results, etc.)
+    '''
+
+    def __init__(self, intercomp):
+        # All access to data happens through instance of intercomparison
+        self.intercomparison = intercomp; 
+    
+    
+
 class intercomparison:
     '''
     Routines that will help access large model output within complex folder structures.
@@ -18,17 +33,27 @@ class intercomparison:
     ----- | control  |   01   |  f01_g12.H.c1   |
     ----- | fluxadj  |   01   |  f01_g12.H_fa1  |
     '''
-    def __init__( self , dir_table ):
+    def __init__( self , dir_table, model_types ):
         # Properties including paths, config, etc.
-        self.dir_table = dir_table; 
-        self.models = self.make_models();
+        self.dir_table = dir_table ; 
+        # model_types is a tuple listing what subclass of model_run should be used for each model
+        self.model_types = model_types; 
+        # create instance for each row in the model table
+        self.models = [ model_types[jj]( dir_table.loc[jj] ) for jj in range( len( dir_table ) ) ]; 
+        self.storage = self.prepare_storage();
 
-    def make_models( self ):
-        models = []; 
-        for jj in range( len( dir_table.index ) ):
-            # Create instance of model_run for each row
-            models.append( model_run( dir_table[jj] ) )
-    
+    def prepare_storage( self ):
+        # Create dict with entries for each one of the configurations in dir_table.
+        storage = dict(); 
+        configs = list( set( self.dir_table['config'] ) ) 
+        for conf in configs:
+            storage[conf] = dict()
+        return storage
+
+    def distribute_task( self, func ):
+        pass
+        
+
     
 
 class model_run(ABC):
