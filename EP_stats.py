@@ -2,9 +2,36 @@ import xarray as xr; from scipy import linalg
 import numpy as np;
 import pandas as pd; from datetime import datetime, timedelta;
 
+def seasonal_matrix( timevec, n_terms , leap_years = False ):
+    '''
+    Return a matrix with mean, linear trend, and n_terms pairs of cosines and cosines
+    meant to be used with least squares fits. Frequencies predetermined to be a seasonal cycle.
+    '''
+    year = 365
+    if leap_years:
+        year = 356.25
+
+    N = len( timevec ); t0 = datetime( 1900, 1, 1 );
+    xaxis = np.array([ (pd.to_datetime(jj) - t0 ).total_seconds() \
+            for jj in timevec.values ])
+    year_freq = 2 * np.pi / (3600*24*year)
+
+    # Create empty matrix
+    fit_mat = np.empty( (N, 2*n_terms + 2 ) ); # mean, trend, cycles
+    fit_mat[:,0] = np.ones( (N, ) ); 
+    fit_mat[:,1] = xaxis; # linear fit
+
+    # Put sines and cosines into matrix
+    for jj in range( 1, n_terms + 1 ):
+        cols = [jj*2, jj*2 + 1];
+        freq = year_freq * jj 
+        fit_mat[:,cols[0]] = np.sin( xaxis * freq )
+        fit_mat[:,cols[1]] = np.cos( xaxis * freq )
+    return fit_mat 
 
 
-def seasonal_cycle( data, n_terms ):
+
+def seasonal_cycle( data, n_terms, leap_years = True ):
     ''' 
     Use least squares to fit a trend and seasonal cycle to data. 
     '''
@@ -12,24 +39,8 @@ def seasonal_cycle( data, n_terms ):
         print('I can only process one-dimensional data')
         return None
 
-    # Specify parameters needed to create sines, cosines, etc.
-    N = len(data); # length of record
-    t0 = datetime(1900,1,1)
-    xaxis = np.array([ (pd.to_datetime( jj )  - t0 ).total_seconds() \
-            for jj in data.time.values ]); # for trend
-    year_freq = 2 * np.pi / (3600*24*365.25);
-
-    # Create empty matrix for base elements of fit
-    fit_mat = np.empty( ( N, 2*n_terms + 2 ) ); # mean, trend, and cycles
-    fit_mat[:,0] = np.ones( ( N , ) );
-    fit_mat[:,1] = xaxis
-
-    # Put sines and cosines into matrix
-    for jj in range(1,n_terms+1):
-        cols = [jj*2, jj*2+1]
-        freq = year_freq * jj
-        fit_mat[:, cols[0]] = np.sin( xaxis * freq );
-        fit_mat[:, cols[1]] = np.cos( xaxis * freq );
+    # Create sine cosine fit matrix
+    fit_mat = seasonal_matrix( data['time'], n_terms, leap_years )
 
     # Obtain coefficients for all terms
     coefs, res = solve_least_squares( fit_mat, data )
