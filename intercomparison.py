@@ -67,12 +67,12 @@ class model_run(ABC):
         #self.components = folders_within(); # subdirectories inside main folder
         
 
-    def folders_within( self ):
+    def view_subdirs( self ):
         # Get a list of all subdirectories within this model run folder
         dl_clean = [];
         for dir_name in os.listdir( self.path ):
             # Check what items within are directories
-            if os.path.isdir( os.path.join( path, dir_name )):
+            if os.path.isdir( os.path.join( self.path, dir_name )):
                 dl_clean.append( dir_name );
         return dl_clean         
 
@@ -102,7 +102,7 @@ class model_run(ABC):
  
 class CESM_12(model_run):
     '''
-    Originally made to analyze Boniface's runs of GHG emissions under flux adjustment. 
+    Oriiginally made to analyze Boniface's runs of GHG emissions under flux adjustment. 
     '''
 
     def prepare_xr( self, xr_obj ):
@@ -113,17 +113,20 @@ class CESM_12(model_run):
         # To save storage, cut files in space or subselecting variables using cut_func
         ind_files = []; 
         filelist = sorted( filelist ) ; # sort it just in case 
+        batch_file = xr.open_mfdataset( filelist , parallel=True,
+                              combine = 'by_coords' );
+        batch_file = self.prepare_xr( batch_file );
+        batch_file = cut_func( batch_file ); 
+        #for jj in range( len( filelist ) ):
+        #    filename = filelist[jj];
+        #    datafile = xr.load_dataset( filename , decode_times = False )
+        #    # Now prepare xr to have desired format and cut it spatially /select variables as desired
+        #    datafile = self.prepare_xr( datafile );
+        #    datafile = cut_func( datafile );
+        #    ind_files.append( datafile ); 
 
-        for jj in range( len( filelist ) ):
-            filename = filelist[jj];
-            datafile = xr.load_dataset( filename , decode_times = False )
-            # Now prepare xr to have desired format and cut it spatially /select variables as desired
-            datafile = self.prepare_xr( datafile );
-            datafile = cut_func( datafile );
-            ind_files.append( datafile ); 
-
-        del datafile # keep it clean
-        batch_file = xr.concat( ind_files , dim = 'time' ); 
+        #del datafile # keep it clean
+        #batch_file = xr.concat( ind_files , dim = 'time' ); 
         return batch_file 
 
 
