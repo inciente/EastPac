@@ -13,7 +13,7 @@ def seasonal_matrix( timevec, n_terms , leap_years = False ):
 
     N = len( timevec ); 
     # t0 must be middle point in order for coef0 to be the mean
-    t0 = pd.to_datetime( timevec.isel( time = int( len(timevec)/2 ) ).values );
+    t0 = datetime( 1900, 1, 1 )
     xaxis = np.array([ (pd.to_datetime(jj) - t0 ).total_seconds() \
             for jj in timevec.values ])
     year_freq = 2 * np.pi / (3600*24*year)
