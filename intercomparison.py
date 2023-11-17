@@ -1,7 +1,7 @@
 #navigate.py
 
 from abc import ABC, abstractmethod
-import sys, os, re;
+import sys, os, re, time, warnings;
 import xarray as xr;
 import pandas as pd; 
 
@@ -9,19 +9,32 @@ def do_nothing( data_in ):
     # Is useful as placeholder in some more complex functions
     return data_in
 
-class execute_compare:
+class ScopeDescriptor:
     '''
-    This is the interface you will use to distribute operations on data managed by 
-    instances of intercomparison. Operations will be separated into three categories, 
-    1. Operations done upon loading data (file selection, subsetting, etc.)
-    2. Analysis operations (are we computing spectra, means, seasonal cycles?)
-    3. What is to be done with the results? (save to file, plot, group results, etc.)
+    Use this class (dictionary-like value) to store all information needed to subset, 
+    modify, acces, or generally operate with entities handler by model_run instances.
+    This is a sort of interface for intercomparison to know what to say to model_run.
     '''
 
-    def __init__(self, intercomp):
-        # All access to data happens through instance of intercomparison
-        self.intercomparison = intercomp; 
+    def __get__( self, instance, owner ): 
+        return instance._scope
+
+    def __set__( self, instance, value ):
+        # Make all sanity checks needed to ensure that scope will work seamlessly
+        if not isinstance( value, dict ):
+            raise ValueError('Scope must be a dictionary-like object' )
+        # Add other sanity checks to make sure that scope is well-defined
+        if not all( key in value.keys() for key in ['load_from','cutter','file_rule'] ):
+
+        instance._scope = value
     
+    def incomplete_scope( ):
+        warning_message = 'Your scope does not include entries for: load_from, cutter, and file_rule. Do you want to continue? (y/n):'
+        user_input = input( warning_message ).lower()
+        if user_input != 'y':
+            raise UserWarning('Execution stopped by user')
+        else:
+            warnings.warn('User chose to proceed with the specified scope', UserWarning )
     
 
 class intercomparison:
@@ -42,6 +55,21 @@ class intercomparison:
         self.models = [ model_types[jj]( dir_table.loc[jj] ) for jj in range( len( dir_table ) ) ]; 
         self.storage = self.prepare_storage();
 
+    # Use the descriptor for the scope attribute
+    scope = ScopeDescriptor()
+
+    def extract_data( self, m_index ):
+        # Basic routine of operations needed to prepare, load, and cut data as required by scope 
+        model = self.models[ m_index ] 
+        # create a list of files to load
+        files2load = model.files_rule( self.scope['load_from'], self.scope['file_rule'] )
+        # now use load_batch in the model to load them
+        start_time = time.time()
+        data = model.load_batch( files2load, self.scope['cutter'] ); 
+        print("Loading batch took --- %s seconds ---" % (time.time() - start_time))
+        # data = data.sortby('time');
+        return data 
+
     def prepare_storage( self ):
         # Create dict with entries for each one of the configurations in dir_table.
         storage = dict(); 
@@ -50,9 +78,10 @@ class intercomparison:
             storage[conf] = dict()
         return storage
 
-    def distribute_task( self, func ):
+
+    def distribute_task( self, to_storage = False ):
+        # Cycle through models, extract data, perform task, and save if necessary 
         pass
-        
 
     
 
@@ -61,6 +90,7 @@ class model_run(ABC):
     Subclass that helps compose a model_comparison object. 
     '''
     def __init__(self,  dir_row ):
+        
         self.config = dir_row['config'];
         self.path = dir_row['path'];
         self.ensnum = dir_row['ensnum'];
@@ -76,7 +106,9 @@ class model_run(ABC):
                 dl_clean.append( dir_name );
         return dl_clean         
 
-    def files_rule( self, subdir, rule):
+    def files_rule( self, subdir, rule ):
+        #subdir = self.comp['subdir']; # -- don't include comp here
+        #rule = self.comp['file_rule']; 
         # Get all files within subdir, and return a list of all files within whose naming follows a given rule. 
         all_files = os.listdir( self.path + subdir );
         is_file_good = [ rule( item ) for item in all_files ]; # rule returns true or false 
@@ -118,12 +150,12 @@ class POP2(model_run):
         xr_obj['time'] = xr_obj.indexes['time'].to_datetimeindex()
         return xr_obj 
 
-    def load_batch( self , filelist, cut_func=do_nothing ):
+    def load_batch( self , filelist, cut_func = do_nothing ):
         # Take a list of files, load all of them, and concatenate over time
         # To save storage, cut files in space or subselecting variables using cut_func
         ind_files = []; 
         filelist = sorted( filelist ) ; # sort it just in case 
-        batch_file = xr.open_mfdataset( filelist ,
+        batch_file = xr.open_mfdataset( filelist , chunks = {'time':12}, parallel = False,
                               combine = 'by_coords' );
         popem = True
         if popem : 
