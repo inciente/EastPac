@@ -36,8 +36,8 @@ class intercomparison:
     def __init__( self , dir_table, model_types ):
         # Properties including paths, config, etc.
         self.dir_table = dir_table ; 
-        # model_types is a tuple listing what subclass of model_run should be used for each model
-        self.model_types = model_types; 
+        # iterable with subclass of model_run should be used for each model
+        self.model_types = model_types; # could eventually replace with factory managed by scope
         # create instance for each row in the model table
         self.models = [ model_types[jj]( dir_table.loc[jj] ) for jj in range( len( dir_table ) ) ]; 
         self.storage = self.prepare_storage();
@@ -100,12 +100,22 @@ class model_run(ABC):
 
 
  
-class CESM_12(model_run):
+class POP2(model_run):
     '''
-    Oriiginally made to analyze Boniface's runs of GHG emissions under flux adjustment. 
+    Oriiginally made to analyze runs of GHG emissions under flux adjustment. 
+    Current version can only handle ocean component. 
     '''
 
     def prepare_xr( self, xr_obj ):
+        '''
+        Focus on changing coordinate names and sorting by ascending order
+        '''
+        xr_obj['z_t'] = xr_obj['z_t'] / 100; # cm to meters
+        xr_obj["nlon"] = xr_obj["ULONG"].isel(nlat=0);
+        xr_obj["nlat"] = xr_obj["ULAT"].isel(nlon=0);
+        xr_obj = xr_obj.sortby( 'nlon' ); 
+        # Interoperability with timedelta
+        xr_obj['time'] = xr_obj.indexes['time'].to_datetimeindex()
         return xr_obj 
 
     def load_batch( self , filelist, cut_func=do_nothing ):
@@ -113,20 +123,16 @@ class CESM_12(model_run):
         # To save storage, cut files in space or subselecting variables using cut_func
         ind_files = []; 
         filelist = sorted( filelist ) ; # sort it just in case 
-        batch_file = xr.open_mfdataset( filelist , parallel=True,
+        batch_file = xr.open_mfdataset( filelist ,
                               combine = 'by_coords' );
+        popem = True
+        if popem : 
+            dum = xr.open_dataset( filelist[0] )
+            batch_file.update( dum[[ 'ULONG','ULAT','TLONG','TLAT' ]] )
+            dum.close()
+        # Fix coordinate situation
         batch_file = self.prepare_xr( batch_file );
-        batch_file = cut_func( batch_file ); 
-        #for jj in range( len( filelist ) ):
-        #    filename = filelist[jj];
-        #    datafile = xr.load_dataset( filename , decode_times = False )
-        #    # Now prepare xr to have desired format and cut it spatially /select variables as desired
-        #    datafile = self.prepare_xr( datafile );
-        #    datafile = cut_func( datafile );
-        #    ind_files.append( datafile ); 
-
-        #del datafile # keep it clean
-        #batch_file = xr.concat( ind_files , dim = 'time' ); 
+        batch_file = cut_func( batch_file ); # get from intercomparison.scope
         return batch_file 
 
 
