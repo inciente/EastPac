@@ -25,7 +25,7 @@ class ScopeDescriptor:
             raise ValueError('Scope must be a dictionary-like object' )
         # Add other sanity checks to make sure that scope is well-defined
         if not all( key in value.keys() for key in ['load_from','cutter','file_rule'] ):
-
+            incomplete_scope(); # tell user about missing entries
         instance._scope = value
     
     def incomplete_scope( ):
@@ -35,7 +35,8 @@ class ScopeDescriptor:
             raise UserWarning('Execution stopped by user')
         else:
             warnings.warn('User chose to proceed with the specified scope', UserWarning )
-    
+
+
 
 class intercomparison:
     '''
@@ -46,6 +47,7 @@ class intercomparison:
     ----- | control  |   01   |  f01_g12.H.c1   |
     ----- | fluxadj  |   01   |  f01_g12.H_fa1  |
     '''
+    
     def __init__( self , dir_table, model_types ):
         # Properties including paths, config, etc.
         self.dir_table = dir_table ; 
@@ -65,7 +67,7 @@ class intercomparison:
         files2load = model.files_rule( self.scope['load_from'], self.scope['file_rule'] )
         # now use load_batch in the model to load them
         start_time = time.time()
-        data = model.load_batch( files2load, self.scope['cutter'] ); 
+        data = model.mf_loader( files2load, self.scope['cutter'] ); 
         print("Loading batch took --- %s seconds ---" % (time.time() - start_time))
         # data = data.sortby('time');
         return data 
@@ -83,7 +85,7 @@ class intercomparison:
         # Cycle through models, extract data, perform task, and save if necessary 
         pass
 
-    
+
 
 class model_run(ABC):
     '''
@@ -118,11 +120,21 @@ class model_run(ABC):
         good_files = sorted( good_files ); 
         return good_files 
 
-    @abstractmethod
-    def load_batch( self ):
+    def mf_loader( self, filelist, cutter = do_nothing ):
+        # General function used to load and concatenate files. dropper allows to drop useless or confounding variables
+        # Writing it here as a placeholder for whenever I figure out the best way to load large numbers of files
+        ind_files = []; 
+        filelist = sorted( filelist ); # just in case
+        batch_file = xr.open_mfdataset( filelist, chunks = {'time':12}, parallel = False, combine='by_coords');
+        batch_file = self.prepare_xr( batch_file )
+        batch_file = cutter( batch_file );
+        return batch_file
+
+    #@abstractmethod
+    #def load_batch( self ):
         # This will be a very important function. Allow access to a subset of the files in file_list. 
         # Enable iteration in cycle that includes all our actual operations and analysis on model output. 
-        pass
+    #    pass
 
 
     @abstractmethod
@@ -150,24 +162,39 @@ class POP2(model_run):
         xr_obj['time'] = xr_obj.indexes['time'].to_datetimeindex()
         return xr_obj 
 
-    def load_batch( self , filelist, cut_func = do_nothing ):
-        # Take a list of files, load all of them, and concatenate over time
-        # To save storage, cut files in space or subselecting variables using cut_func
-        ind_files = []; 
-        filelist = sorted( filelist ) ; # sort it just in case 
-        batch_file = xr.open_mfdataset( filelist , chunks = {'time':12}, parallel = False,
-                              combine = 'by_coords' );
-        popem = True
-        if popem : 
-            dum = xr.open_dataset( filelist[0] )
-            batch_file.update( dum[[ 'ULONG','ULAT','TLONG','TLAT' ]] )
-            dum.close()
+    #def load_batch( self , filelist, cut_func = do_nothing ):
+    #    # Take a list of files, load all of them, and concatenate over time
+    #    # To save storage, cut files in space or subselecting variables using cut_func
+    #    ind_files = []; 
+    #    filelist = sorted( filelist ) ; # sort it just in case 
+    #    batch_file = xr.open_mfdataset( filelist , chunks = {'time':12}, parallel = False,
+    #                          combine = 'by_coords' );
+        #popem = True
+        #if popem : 
+        #    dum = xr.open_dataset( filelist[0] )
+        #    batch_file.update( dum[[ 'ULONG','ULAT','TLONG','TLAT' ]] )
+        #    dum.close()
         # Fix coordinate situation
-        batch_file = self.prepare_xr( batch_file );
-        batch_file = cut_func( batch_file ); # get from intercomparison.scope
-        return batch_file 
+    #    batch_file = self.prepare_xr( batch_file );
+    #    batch_file = cut_func( batch_file ); # get from intercomparison.scope
+    #    return batch_file 
 
+class CAM( model_run ):
+    '''
+    Set of functions needed to access data within the atmospheric output of CESM 1.2, 
+    coming from the Community Atmosphere Model (CAM).
+    '''
 
+    def prepare_xr( self, xr_obj ): 
+        '''
+        Get values on most workable format
+        '''
+        xr_obj['time'] = xr_obj.indexes['time'].to_datetimeindex();
+        # As far as I can tell, everything else has a standard name (lon, lat, time, lev) and value
+        return xr_obj 
+
+    #def load_batch( self, filelist, cut_func = do_nothing ):
+    #    pass
 
 
 
