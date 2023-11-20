@@ -154,6 +154,7 @@ class POP2(model_run):
         '''
         Focus on changing coordinate names and sorting by ascending order
         '''
+        xr_obj['z_w_top'] = xr_obj['z_w_top']/100; 
         xr_obj['z_t'] = xr_obj['z_t'] / 100; # cm to meters
         xr_obj["nlon"] = xr_obj["ULONG"].isel(nlat=0);
         xr_obj["nlat"] = xr_obj["ULAT"].isel(nlon=0);
