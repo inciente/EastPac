@@ -91,6 +91,7 @@ class model_run(ABC):
     '''
     Subclass that helps compose a model_comparison object. 
     '''
+    chunks = dict()
     def __init__(self,  dir_row ):
         
         self.config = dir_row['config'];
@@ -123,9 +124,10 @@ class model_run(ABC):
     def mf_loader( self, filelist, cutter = do_nothing ):
         # General function used to load and concatenate files. dropper allows to drop useless or confounding variables
         # Writing it here as a placeholder for whenever I figure out the best way to load large numbers of files
-        ind_files = []; 
+        ind_files = [];
+        print( filelist )
         filelist = sorted( filelist ); # just in case
-        batch_file = xr.open_mfdataset( filelist, chunks = {'time':12}, parallel = False, combine='by_coords');
+        batch_file = xr.open_mfdataset( filelist, chunks = {'time':1} , parallel = False, combine='by_coords');
         batch_file = self.prepare_xr( batch_file )
         batch_file = cutter( batch_file );
         return batch_file
@@ -149,7 +151,7 @@ class POP2(model_run):
     Oriiginally made to analyze runs of GHG emissions under flux adjustment. 
     Current version can only handle ocean component. 
     '''
-
+    chunks = {'time':1, 'nlon':6}
     def prepare_xr( self, xr_obj ):
         '''
         Focus on changing coordinate names and sorting by ascending order
@@ -185,7 +187,7 @@ class CAM( model_run ):
     Set of functions needed to access data within the atmospheric output of CESM 1.2, 
     coming from the Community Atmosphere Model (CAM).
     '''
-
+    chunks = {'time':1};
     def prepare_xr( self, xr_obj ): 
         '''
         Get values on most workable format
@@ -199,4 +201,10 @@ class CAM( model_run ):
 
 
 
-
+class DUMMY( model_run ):
+    '''
+    Not a real model, just a dummy version designed to test operation of intercomparison
+    '''
+    chunks = {'time':1};
+    def prepare_xr( self, xr_obj ):
+        return xr_obj 
