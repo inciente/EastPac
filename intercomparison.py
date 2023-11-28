@@ -47,13 +47,15 @@ def write_json( fs_from, fs_to, filepath, write_as ):
     with fs_to.open( write_as, 'wb' ) as writer:
         writer.write( ujson.dumps( h5chunks.translate()).encode() );
 
-def json_combiner( jsonlist, save_as ):
-    pass
-    #    mzz = MultiZarrToZarr( jsonlist, remote_protocol = 'file', concat_dims=['time'],
-    #                  identical_dims = ['nlon','nlat'] )
-    #d = mzz.translate()
-    #with fs_to.open( save_folder + 'POP2-ENS' + str(model.ensnum).zfill(2) + '_combined.json', 'wb' ) as f:
-    #    f.write( ujson.dumps( d ).encode())
+def json_combiner( fs_to, files2combine, config, save_as ):
+    # combine all individual jsons to create a wormhole to whole dataset
+    mzz = MultiZarrToZarr( files2combine , remote_protocol = 'file', concat_dims=['time'],
+                      identical_dims = config['id_dims'] )
+    d = mzz.translate()
+    print('Combining ' + str( len(files2combine) ) + ' different files!')
+    with fs_to.open( save_as , 'wb' ) as f:
+        f.write( ujson.dumps( d ).encode())
+    
 
 
 class ScopeDescriptor:
@@ -119,7 +121,7 @@ class intercomparison:
         # data = data.sortby('time');
         return data 
 
-    def model_to_json( self, m_index ):
+    def model_to_json( self, m_index, override_exists = False ):
         '''
         Takes in data from scope and model to write json summary files of multiple .nc
 
@@ -131,16 +133,19 @@ class intercomparison:
         for jj in range( len( files2write ) ):
             get_from = files2write[jj];
             save_as = self.scope['save_as']( model, get_from );
-            # access netcdf, open, and write json 
-            write_json( self.scope['fs_from'], self.scope['fs_to'], get_from, save_as )
-            files2combine.append( save_as ); 
-        # combine all individual jsons to create a wormhole to whole dataset
-        mzz = MultiZarrToZarr( files2combine , remote_protocol = 'file', concat_dims=['time'],
-                      identical_dims = model.mzz_config['id_dims'] )
-        d = mzz.translate()
-        combined_name = model.name + '-ENS' + str( model.ensnum).zfill(2) + '-combined.json';
-        with self.scope['fs_to'].open( self.scope['summary_folder'] + combined_name, 'wb' ) as f:
-            f.write( ujson.dumps( d ).encode())
+            files2combine.append( save_as )
+            if os.path.isfile( save_as ) and override_exists is not True:
+                continue
+            else:
+                # access netcdf, open, and write json 
+                write_json( self.scope['fs_from'], self.scope['fs_to'], get_from, save_as )
+        return files2combine
+
+# spent code on how to combine individual jsons. will implement somewhere else for now
+#        combined_name = self.scope['summary_folder'] + model.name + '-' + model.config \
+#                + '-ENS' + str(model.ensnum).zfill(2) + '-combined.json';
+#        json_combiner( self.scope['fs_to'], files2combine, model.mzz_config, combined_name )
+
     
 
     def prepare_storage( self ):
@@ -215,7 +220,7 @@ class POP2(model_run):
     '''
     chunks = {'time':1, 'nlon':6}
     name = 'POP2'
-    mzz_config = { 'id_dims':['nlon','nlat','z_t'] }
+    mzz_config = { 'id_dims':['nlon','nlat','z_t','z_w_top'] }
 
     def prepare_xr( self, xr_obj ):
         '''
