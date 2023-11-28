@@ -2,7 +2,7 @@
 Unit and integration tests for the code in intercomparison.py
 '''
 
-import unittest, os, sys;
+import unittest, os, sys, fsspec;
 import xarray as xr; import pandas as pd; 
 import numpy as np
 
@@ -53,8 +53,21 @@ scope = dict();
 scope['load_from'] = 'dat'
 scope['file_rule'] = lambda text: True;#lambda fln : True if '5-01.basic.nc' in fln else False
 scope['cutter'] = lambda xr_obj: xr_obj; # return xarray without changing
+scope['filesystem'] = fsspec.filesystem( 'file', anon = True ); 
 comp.scope = scope;
 print('Created intercomparison, instantiated models, and assigned a scope')
+
+fs_from = fsspec.filesystem( 'file', anon = True, url = 'config02/dat/' );
+fs_to = fsspec.filesystem( ''  );
+filenames = fs_from.glob( '*.nc' )
+json_names = [ 'config02/dat/zarr_' + str(jj).zfill(2) + '.json' for jj in range( len(filenames) ) ]
+
+ 
+for jj in range( len( filenames ) ):
+    fln = filenames[jj]; 
+    save_as = json_names[jj]; 
+    print( save_as ) 
+    intercomparison.write_json( fs_from, fs_to, fln, save_as )
 
 ds = comp.extract_data(0)
 print('Successfully ran extract data') 

@@ -1,13 +1,60 @@
-#navigate.py
+# intercomparison.py
 
+from datetime import timedelta, datetime
 from abc import ABC, abstractmethod
+from kerchunk.hdf import SingleHdf5ToZarr
+from kerchunk.netCDF3 import NetCDF3ToZarr
+from kerchunk.combine import MultiZarrToZarr
+
 import sys, os, re, time, warnings;
 import xarray as xr;
 import pandas as pd; 
+import fsspec, ujson;
 
 def do_nothing( data_in ):
     # Is useful as placeholder in some more complex functions
     return data_in
+
+def days_since_to_datetime( t0, timevec, no_leap = True ):
+    # Input: t0 -> datetime, timevec -> array of numbers
+    # Output: time -> array of datetimes
+    ylen = 365.25
+    if no_leap:
+        ylen = 365;
+    years = [ np.floor( tval / ylen ) + t0.year for tval in timevec ] ;
+    ydays = [ np.mod( tval, ylen ) for tval in timevec ] ;
+    time = np.array( [ datetime( years[jj] ) + timedelta( days = ydays[jj] ) \
+                for jj in range( len( timevec ) ) ] )
+    return time
+
+def write_json( fs_from, fs_to, filepath, write_as ):
+    '''
+    Function to take a single netcdf file and make json file using kerchunk 
+    Input: 
+    --- filepath --- str leading to a netcdf file
+    --- fs_from --- fsspec.filesystem from which to extract data
+    --- fs_to --- fsspec.filesystem to write json files with
+    Output:
+    --- Writes json file that allows xr to access to netcdf as if it were a zarr    
+    '''
+
+    so = dict( mode = 'rb', anon = True, default_fil_cache = False, 
+            default_cache_type = 'first' ); # args to fs.open()
+    #with fs_from.open( filepath , **so ) as infile: 
+    #h5chunks = SingleHdf5ToZarr( infile, filepath, inline_threshold = 350 ); 
+    h5chunks = NetCDF3ToZarr( filepath , inline_threshold = 300 ); 
+    # inline_threholds is directly proportional to size of json, inverse to time it takes to open data later
+    with fs_to.open( write_as, 'wb' ) as writer:
+        writer.write( ujson.dumps( h5chunks.translate()).encode() );
+
+def json_combiner( jsonlist, save_as ):
+    pass
+    #    mzz = MultiZarrToZarr( jsonlist, remote_protocol = 'file', concat_dims=['time'],
+    #                  identical_dims = ['nlon','nlat'] )
+    #d = mzz.translate()
+    #with fs_to.open( save_folder + 'POP2-ENS' + str(model.ensnum).zfill(2) + '_combined.json', 'wb' ) as f:
+    #    f.write( ujson.dumps( d ).encode())
+
 
 class ScopeDescriptor:
     '''
@@ -72,6 +119,30 @@ class intercomparison:
         # data = data.sortby('time');
         return data 
 
+    def model_to_json( self, m_index ):
+        '''
+        Takes in data from scope and model to write json summary files of multiple .nc
+
+        '''
+        model = self.models[ m_index ]; 
+        files2write = model.files_rule( self.scope['load_from'] , self.scope['file_rule'] ); 
+        # Cycle through individual files and write each a json
+        files2combine = []
+        for jj in range( len( files2write ) ):
+            get_from = files2write[jj];
+            save_as = self.scope['save_as']( model, get_from );
+            # access netcdf, open, and write json 
+            write_json( self.scope['fs_from'], self.scope['fs_to'], get_from, save_as )
+            files2combine.append( save_as ); 
+        # combine all individual jsons to create a wormhole to whole dataset
+        mzz = MultiZarrToZarr( files2combine , remote_protocol = 'file', concat_dims=['time'],
+                      identical_dims = model.mzz_config['id_dims'] )
+        d = mzz.translate()
+        combined_name = model.name + '-ENS' + str( model.ensnum).zfill(2) + '-combined.json';
+        with self.scope['fs_to'].open( self.scope['summary_folder'] + combined_name, 'wb' ) as f:
+            f.write( ujson.dumps( d ).encode())
+    
+
     def prepare_storage( self ):
         # Create dict with entries for each one of the configurations in dir_table.
         storage = dict(); 
@@ -91,14 +162,16 @@ class model_run(ABC):
     '''
     Subclass that helps compose a model_comparison object. 
     '''
+    # Identifying features of model instances
     chunks = dict()
+    name = str()
+    mzz_config = dict()
+
     def __init__(self,  dir_row ):
-        
         self.config = dir_row['config'];
         self.path = dir_row['path'];
         self.ensnum = dir_row['ensnum'];
-        #self.components = folders_within(); # subdirectories inside main folder
-        
+        #self.components = folders_within(); # subdirectories inside main folder        
 
     def view_subdirs( self ):
         # Get a list of all subdirectories within this model run folder
@@ -110,39 +183,28 @@ class model_run(ABC):
         return dl_clean         
 
     def files_rule( self, subdir, rule ):
-        #subdir = self.comp['subdir']; # -- don't include comp here
-        #rule = self.comp['file_rule']; 
         # Get all files within subdir, and return a list of all files within whose naming follows a given rule. 
-        all_files = os.listdir( self.path + subdir );
-        is_file_good = [ rule( item ) for item in all_files ]; # rule returns true or false 
-        # Now save only good files and add source path so we can load them easily
-        good_files = [ self.path + subdir + '/' + all_files for all_files, is_file_good \
-                     in zip( all_files, is_file_good ) if is_file_good ]; 
-        good_files = sorted( good_files ); 
+        # Tool needed to extract files
+        fs = fsspec.filesystem('', anon=True);
+        # Where we're going to look
+        folder = self.path + subdir + '/';
+        # Find files that look like the rule
+        good_files = sorted( fs.glob( folder + rule ) )
         return good_files 
 
     def mf_loader( self, filelist, cutter = do_nothing ):
         # General function used to load and concatenate files. dropper allows to drop useless or confounding variables
         # Writing it here as a placeholder for whenever I figure out the best way to load large numbers of files
-        ind_files = [];
-        print( filelist )
-        filelist = sorted( filelist ); # just in case
         batch_file = xr.open_mfdataset( filelist, chunks = {'time':1} , parallel = False, combine='by_coords');
         batch_file = self.prepare_xr( batch_file )
         batch_file = cutter( batch_file );
         return batch_file
 
-    #@abstractmethod
-    #def load_batch( self ):
-        # This will be a very important function. Allow access to a subset of the files in file_list. 
-        # Enable iteration in cycle that includes all our actual operations and analysis on model output. 
-    #    pass
-
-
     @abstractmethod
     def prepare_xr( self ):
         # Here is where to code in specific requirements for coordinate assignment/standardization, etc. 
         pass
+
 
 
  
@@ -152,6 +214,9 @@ class POP2(model_run):
     Current version can only handle ocean component. 
     '''
     chunks = {'time':1, 'nlon':6}
+    name = 'POP2'
+    mzz_config = { 'id_dims':['nlon','nlat','z_t'] }
+
     def prepare_xr( self, xr_obj ):
         '''
         Focus on changing coordinate names and sorting by ascending order
@@ -162,25 +227,10 @@ class POP2(model_run):
         xr_obj["nlat"] = xr_obj["ULAT"].isel(nlon=0);
         xr_obj = xr_obj.sortby( 'nlon' ); 
         # Interoperability with timedelta
+        # substitute for time fixer days since 0000-01-01
         xr_obj['time'] = xr_obj.indexes['time'].to_datetimeindex()
         return xr_obj 
 
-    #def load_batch( self , filelist, cut_func = do_nothing ):
-    #    # Take a list of files, load all of them, and concatenate over time
-    #    # To save storage, cut files in space or subselecting variables using cut_func
-    #    ind_files = []; 
-    #    filelist = sorted( filelist ) ; # sort it just in case 
-    #    batch_file = xr.open_mfdataset( filelist , chunks = {'time':12}, parallel = False,
-    #                          combine = 'by_coords' );
-        #popem = True
-        #if popem : 
-        #    dum = xr.open_dataset( filelist[0] )
-        #    batch_file.update( dum[[ 'ULONG','ULAT','TLONG','TLAT' ]] )
-        #    dum.close()
-        # Fix coordinate situation
-    #    batch_file = self.prepare_xr( batch_file );
-    #    batch_file = cut_func( batch_file ); # get from intercomparison.scope
-    #    return batch_file 
 
 class CAM( model_run ):
     '''
@@ -188,6 +238,9 @@ class CAM( model_run ):
     coming from the Community Atmosphere Model (CAM).
     '''
     chunks = {'time':1};
+    name = 'CAM'
+    mzz_config = {'id_dims':['lat','lon','lev']}
+
     def prepare_xr( self, xr_obj ): 
         '''
         Get values on most workable format
