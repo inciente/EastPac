@@ -63,4 +63,43 @@ def solve_least_squares( fit_mat, data ):
     return coefs, res
 
 
+def lagged_correlation(x, y, max_lag=10):
+    """
+    Compute lagged correlation between two xr.DataArrays.
+
+    Parameters:
+    - x, y: xr.DataArray
+        Input arrays with the same dimensions.
+    - max_lag: int, optional
+        Maximum lag to consider along the time dimension.
+
+    Returns:
+    - lagged_corr: xr.DataArray
+        Lagged correlation along the time dimension.
+    """
+    # Check if input arrays have the same dimensions
+    if x.dims != y.dims:
+        raise ValueError("Input arrays must have the same dimensions.")
+    # Initialize an array to store lagged correlations
+    lagged_corr_values = np.zeros((2 * max_lag + 1,) + x.shape[1:], dtype=np.float64)
+
+    # Iterate over lags
+    for lag in range(-max_lag, max_lag + 1):
+        # Apply lag along the time dimension
+        x_lagged = np.roll(x.values, lag, axis=0)
+        y_trimmed = y.values[max(0, -lag):, ...]
+        x_trimmed = x_lagged[max(0, lag):, ...]
+
+        # Compute correlation along all dimensions
+        corr_values = np.corrcoef(x_trimmed.flatten(), y_trimmed.flatten())[0, 1]
+        lagged_corr_values[lag + max_lag] = corr_values
+
+    # Create a DataArray for lagged correlations
+    lagged_corr_dims = ["lag"] + list(x.dims[1:])
+    lag_values = np.arange(-max_lag, max_lag + 1, dtype=np.int64)
+    lagged_corr = xr.DataArray(lagged_corr_values, dims=lagged_corr_dims, coords={"lag": lag_values})
+
+    return lagged_corr
+
+
 
