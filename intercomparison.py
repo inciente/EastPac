@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from kerchunk.hdf import SingleHdf5ToZarr
 from kerchunk.netCDF3 import NetCDF3ToZarr
 from kerchunk.combine import MultiZarrToZarr
+from datatree import DataTree
 
 import sys, os, re, time, warnings;
 import xarray as xr;
@@ -56,6 +57,15 @@ def json_combiner( fs_to, files2combine, config, save_as ):
     with fs_to.open( save_as , 'wb' ) as f:
         f.write( ujson.dumps( d ).encode())
     
+def json_to_xr( fln ):
+    #fln = get_summary_fln( model ); # get filepath
+    # Load dataset from json as xarray 
+    fs = fsspec.filesystem('reference', fo= fln, target_options={'anon':True}, remote_options={'anon':True})
+    m = fs.get_mapper('')
+    ds = xr.open_dataset(m, engine='zarr', backend_kwargs={'consolidated':False}, chunks = {'time':12} )
+    #ds = model.prepare_xr( ds ) # remnant from implementation with model_run instances
+    return ds 
+
 
 
 class ScopeDescriptor:
@@ -104,7 +114,6 @@ class intercomparison:
         self.model_types = model_types; # could eventually replace with factory managed by scope
         # create instance for each row in the model table
         self.models = [ model_types[jj]( dir_table.loc[jj] ) for jj in range( len( dir_table ) ) ]; 
-        self.storage = self.prepare_storage();
 
     # Use the descriptor for the scope attribute
     scope = ScopeDescriptor()
@@ -141,12 +150,6 @@ class intercomparison:
                 write_json( self.scope['fs_from'], self.scope['fs_to'], get_from, save_as )
         return files2combine
 
-# spent code on how to combine individual jsons. will implement somewhere else for now
-#        combined_name = self.scope['summary_folder'] + model.name + '-' + model.config \
-#                + '-ENS' + str(model.ensnum).zfill(2) + '-combined.json';
-#        json_combiner( self.scope['fs_to'], files2combine, model.mzz_config, combined_name )
-
-    
 
     def prepare_storage( self ):
         # Create dict with entries for each one of the configurations in dir_table.
@@ -155,11 +158,6 @@ class intercomparison:
         for conf in configs:
             storage[conf] = dict()
         return storage
-
-
-    def distribute_task( self, to_storage = False ):
-        # Cycle through models, extract data, perform task, and save if necessary 
-        pass
 
 
 
@@ -228,8 +226,12 @@ class POP2(model_run):
         '''
         xr_obj['z_w_top'] = xr_obj['z_w_top']/100; 
         xr_obj['z_t'] = xr_obj['z_t'] / 100; # cm to meters
-        xr_obj["nlon"] = xr_obj["ULONG"].isel(nlat=0);
-        xr_obj["nlat"] = xr_obj["ULAT"].isel(nlon=0);
+        xr_obj["nlon"] = xr_obj["ULONG"].isel(nlat=0).isel( time = 0 );
+        xr_obj["nlat"] = xr_obj["ULAT"].isel(nlon=0).isel( time = 0 );
+        #if isinstance( xr_obj, xr.Dataset):
+        #    print( xr_obj['nlon'] )
+        #    xr_obj = xr_obj.sortby( list( xr_obj.keys() ) , 'nlon' ); 
+        #elif isinstance( xr_obj, xr.DataArray ):
         xr_obj = xr_obj.sortby( 'nlon' ); 
         # Interoperability with timedelta
         # substitute for time fixer days since 0000-01-01
