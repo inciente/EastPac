@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from kerchunk.hdf import SingleHdf5ToZarr
 from kerchunk.netCDF3 import NetCDF3ToZarr
 from kerchunk.combine import MultiZarrToZarr
-from datatree import DataTree
+#from datatree import DataTree
 
 import sys, os, re, time, warnings;
 import xarray as xr;
