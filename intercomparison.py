@@ -2,15 +2,19 @@
 
 from datetime import timedelta, datetime
 from abc import ABC, abstractmethod
-from kerchunk.hdf import SingleHdf5ToZarr
-from kerchunk.netCDF3 import NetCDF3ToZarr
-from kerchunk.combine import MultiZarrToZarr
+try:
+    from kerchunk.hdf import SingleHdf5ToZarr
+    from kerchunk.netCDF3 import NetCDF3ToZarr
+    from kerchunk.combine import MultiZarrToZarr
+    import ujson
+except:
+    print('Could not import kerchunk. Implementations will fail')
 #from datatree import DataTree
 
 import sys, os, re, time, warnings;
 import xarray as xr;
 import pandas as pd; 
-import fsspec, ujson;
+import fsspec;
 
 def do_nothing( data_in ):
     # Is useful as placeholder in some more complex functions
@@ -50,7 +54,8 @@ def write_json( fs_from, fs_to, filepath, write_as ):
 
 def json_combiner( fs_to, files2combine, config, save_as ):
     # combine all individual jsons to create a wormhole to whole dataset
-    mzz = MultiZarrToZarr( files2combine , remote_protocol = 'file', concat_dims=['time'],
+    mzz = MultiZarrToZarr( files2combine , remote_protocol = 'file',
+                      concat_dims = ['time'],  
                       identical_dims = config['id_dims'] )
     d = mzz.translate()
     print('Combining ' + str( len(files2combine) ) + ' different files!')
@@ -198,7 +203,7 @@ class model_run(ABC):
     def mf_loader( self, filelist, cutter = do_nothing ):
         # General function used to load and concatenate files. dropper allows to drop useless or confounding variables
         # Writing it here as a placeholder for whenever I figure out the best way to load large numbers of files
-        batch_file = xr.open_mfdataset( filelist, chunks = {'time':1} , parallel = False, combine='by_coords');
+        batch_file = xr.open_mfdataset( filelist, chunks = {'time':1, 'nlat':1} , parallel = True, combine='by_coords');
         batch_file = self.prepare_xr( batch_file )
         batch_file = cutter( batch_file );
         return batch_file
