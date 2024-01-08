@@ -8,7 +8,7 @@ try:
     from kerchunk.combine import MultiZarrToZarr
     import ujson
 except:
-    print('Could not import kerchunk. Implementations will fail')
+    print('Could not import kerchunk. Implementations in intercomparison will fail')
 #from datatree import DataTree
 
 import sys, os, re, time, warnings;
