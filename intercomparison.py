@@ -67,7 +67,8 @@ def json_to_xr( fln ):
     # Load dataset from json as xarray 
     fs = fsspec.filesystem('reference', fo= fln, target_options={'anon':True}, remote_options={'anon':True})
     m = fs.get_mapper('')
-    ds = xr.open_dataset(m, engine='zarr', backend_kwargs={'consolidated':False}, chunks = {'time':12} )
+    ds = xr.open_dataset(m, engine='zarr', backend_kwargs={'consolidated':False}, 
+            chunks = {} )
     #ds = model.prepare_xr( ds ) # remnant from implementation with model_run instances
     return ds 
 
@@ -164,7 +165,17 @@ class intercomparison:
             storage[conf] = dict()
         return storage
 
+    def stack_config( self, conf_str ):
+        # Returns a list with model instances under a given configuration
+        sub_table = self.dir_table.loc[ self.dir_table['config'] == conf_str ]
+        # Create list with model instances in sub_table
+        models = [ self.models[kk] for kk in sub_table.index ] 
+        return models
 
+    def create_comp_xr( self ):
+        # Create dataset with dims necessary to store output from all models,
+        # ordered by config and ensnum
+        pass 
 
 class model_run(ABC):
     '''
@@ -229,15 +240,16 @@ class POP2(model_run):
         '''
         Focus on changing coordinate names and sorting by ascending order
         '''
-        xr_obj['z_w_top'] = xr_obj['z_w_top']/100; 
-        xr_obj['z_t'] = xr_obj['z_t'] / 100; # cm to meters
+        for vvar in ['z_t','z_w_top','z_w_bot']:
+            try:
+                xr_obj[ vvar ] = xr_obj[ vvar ] / 100; # scaled to m
+            except:
+                pass
         xr_obj["nlon"] = xr_obj["ULONG"].isel(nlat=0).isel( time = 0 );
         xr_obj["nlat"] = xr_obj["ULAT"].isel(nlon=0).isel( time = 0 );
-        #if isinstance( xr_obj, xr.Dataset):
-        #    print( xr_obj['nlon'] )
-        #    xr_obj = xr_obj.sortby( list( xr_obj.keys() ) , 'nlon' ); 
         #elif isinstance( xr_obj, xr.DataArray ):
         xr_obj = xr_obj.sortby( 'nlon' ); 
+        xr_obj = xr_obj.rename( {'nlon':'lon', 'nlat':'lat'} )
         # Interoperability with timedelta
         # substitute for time fixer days since 0000-01-01
         xr_obj['time'] = xr_obj.indexes['time'].to_datetimeindex()
