@@ -9,6 +9,7 @@ Might have to refactor and replace coordinate references for flexible ones using
 
 '''
 
+
 def find_z_temp( temp_xr, T = 20 ):
     # Find depth at which temperature is closest to T
     temp_xr = temp_xr.fillna( -300 ); # replace nans
@@ -49,6 +50,15 @@ def heat_per_cell( ocn_xr ):
     heat_in_grid = heat_in_grid * 110e3 ** 2 * area_weights( ocn_xr ); # to meters
     # Still need to integrate 
     return heat_in_grid 
+
+def pacific_gradient( xr_obj ):
+    # Use xr_obj to compute gradient between west and east pacific
+    EP_lon = slice(210, 270); WP_lon = slice( 140, 155 )
+    xr_obj = xr_obj.sel( lat = slice( -5, 5 ) ).mean( dim = 'lat' );
+    # Get averages for each sector
+    WP_xr = xr_obj.sel( lon = WP_lon ).mean( dim = 'lon' )
+    EP_xr = xr_obj.sel( lon = EP_lon ).mean( dim = 'lon' );
+    return (EP_xr - WP_xr)
 
 
 

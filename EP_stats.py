@@ -102,4 +102,25 @@ def lagged_correlation(x, y, max_lag=10):
     return lagged_corr
 
 
+def get_trend( xr_obj, for_dims ):
+    # get temporal trend (per decade) in xr_obj
+    # over_dims is a list indicating all non-temporal dimensions
+    xr_obj = xr_obj.stack( all_points = over_dims )
+    timevec = np.array( [ (kk - datetime(1980,1,1) ).total_seconds() \
+                for kk in pd.to_datetime( xr_obj['time'].values ) ] )
+    # replace nans with zeros
+    mask = np.isnan( xr_obj.values );# mask = np.isnan( vals ); 
+    #vals[ mask ] = 0; # because polyfit crashes with nans
+    coefs = np.polyfit( timevec, xr_obj.values, 1 ) 
+    # put in mask for nans
+    coefs[ : , mask[0,:] ] = np.nan
+    # save into
+    nu_dat = coefs[0] * (10*365*24*3600 ); # ttrend per decade
+    # save as xr
+    coords = xr_obj['all_points'].coords;
+    nu_obj = xr.DataArray( data = nu_dat , coords = coords ).unstack('all_points' )
+    return nu_obj  
+
+
+
 
