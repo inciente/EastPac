@@ -117,9 +117,11 @@ class intercomparison:
         # Properties including paths, config, etc.
         self.dir_table = dir_table ; 
         # iterable with subclass of model_run should be used for each model
-        self.model_types = model_types; # could eventually replace with factory managed by scope
+        self.model_types = model_types; 
+        # could eventually replace with factory managed by scope
         # create instance for each row in the model table
-        self.models = [ model_types[jj]( dir_table.loc[jj] ) for jj in range( len( dir_table ) ) ]; 
+        self.models = [ model_types[jj]( dir_table.loc[jj] ) \
+                  for jj in range( len( dir_table ) ) ]; 
 
     # Use the descriptor for the scope attribute
     scope = ScopeDescriptor()
@@ -171,6 +173,21 @@ class intercomparison:
         # Create list with model instances in sub_table
         models = [ self.models[kk] for kk in sub_table.index ] 
         return models
+
+    def distribute_task( self, func ):
+        # Pass a function that operates on all models of the intercomparison
+        # Store results in a dictionary that organizes output by configuration
+        configs = list( self.dir_table['config'].unique() )
+        results = dict(); 
+
+        for cc in range( len( configs ) ):
+            model_list = self.stack_config( configs[cc] );
+            # Store output from each individual model. 
+            results[ configs[cc] ] = [ func( mm ) for mm in model_list ]; 
+        
+        return results
+
+  
 
     def create_comp_xr( self ):
         # Create dataset with dims necessary to store output from all models,
