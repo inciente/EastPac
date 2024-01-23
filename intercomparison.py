@@ -184,7 +184,11 @@ class intercomparison:
             model_list = self.stack_config( configs[cc] );
             # Store output from each individual model. 
             results[ configs[cc] ] = [ func( mm ) for mm in model_list ]; 
-        
+            try: 
+                # Try to concatenate ensemble members to a single object
+                results[ configs[cc] ] = xr.concat( results , dim = 'ensnum' );
+            except:
+                pass    
         return results
 
   
