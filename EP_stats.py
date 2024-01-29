@@ -63,11 +63,21 @@ def solve_least_squares( fit_mat, data ):
     coefs, res, rnk, s = linalg.lstsq( fit_mat, data  )  
     return coefs, res
 
+def remove_seasonal( xr_obj , leap_years = False ):
+    # Get detrended anomalies of xr_obj without seasonal cycle
+    ncomp = 4; # harmonic components for seasonal cycle
+    coefs, recreated = seasonal_cycle( xr_obj, ncomp, 
+             leap_years = leap_years )
+    return xr_obj - recreated
+
 
 def lagged_correlation(x, y, max_lag = None):
     # Computed lagged correlations between two xr_objs or 1D arrays
-    # check for function in notebooks/development
-    pass
+    normalize = lambda data : ( data - np.mean( data ) ) \
+                              / np.std( data )
+    c = np.correlate( normalize( x ) / len( x ) , 
+                    normalize( y ) , 'full' );
+    return c
 
 
 def get_trend( xr_obj, for_dims ):
