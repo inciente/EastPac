@@ -28,10 +28,17 @@ def area_weights( xr_obj ):
     return weights
 
 def get_dx_dy( xr_obj ):
-    dx = np.abs( np.gradient( xr_obj['lon'] ) );
-    dx = xr.DataArray( data = dx, coords = {'lon':xr_obj['lon'] } )
-    dy = np.abs( np.gradient( xr_obj['lat'] ) ); 
-    dy = xr.DataArray( data = dy, coords = {'lat':xr_obj['lat'] } )
+    # Get xy grid with dx and dy for xarray object in meteres
+    # use for diffrentiation or for computing area integrals
+    xx, yy = np.meshgrid( xr_obj['lon'], xr_obj['lat'] );
+    dims = ('lat','lon'); 
+    coords = {'lon':xr_obj['lon'], 'lat':xr_obj['lat']}
+    # Translate to xarray to maintain dimensions
+    xx = xr.DataArray( xx, dims = dims, coords = coords )
+    yy = xr.DataArray( yy, dims = dims, coords = coords );
+    dx = 110e3 * xx.differentiate('lon') * area_weights(xr_obj)
+    dy = 110e3 * yy.differentiate('lat')
+
     return dx, dy
 
 def get_dz( xr_obj , source = 'ocn' ):
@@ -47,7 +54,7 @@ def heat_per_cell( ocn_xr ):
     # calculate heat density
     heat_in_grid = c_p * ocn_xr['RHO'] * ocn_xr['TEMP'] 
     heat_in_grid = heat_in_grid * lay_th * dx * dy ;# times meters * degrees ** 2 
-    heat_in_grid = heat_in_grid * 110e3 ** 2 * area_weights( ocn_xr ); # to meters
+    #heat_in_grid = heat_in_grid * 110e3 ** 2 * area_weights( ocn_xr ); # to meters
     # Still need to integrate 
     return heat_in_grid 
 
