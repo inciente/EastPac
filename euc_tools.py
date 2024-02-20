@@ -3,20 +3,22 @@ import pandas as pd;
 import thermo
 
 # Tools to describe the EUC
+def get_euc_area( ds ):
+    ds = ds.sel( lat = slice( -3, 3 ) ); # equatorial
+    ds = ds.sel( lon = slice( 125, 280 ) ); # pacific
+    ds = ds.sel( z_t = slice( 0, 500 ) );
+    # To continue vertical subsetting use:
+    Nz = len( ds['z_t'] ); 
+    ds = ds.isel( z_w_top = [ jj for jj in range( Nz ) ] )
+    ds = ds.isel( z_w_bot = [ jj for jj in range( Nz ) ] )
+    return ds 
 
 def find_euc( ds ):
     # Take ocean dataset from pop2 and apply conditions to 
     # return a mask that is True in locations that are the EUC
     
     # Begin with spatial subsetting
-    ds = ds.sel( lat = slice( -3, 3 ) ); # equtorial
-    ds = ds.sel( lon = slice( 120, 290 ) ); # pacific 
-    ds = ds.sel( z_t = slice( 0, 500 ) );
-    # To continue vertical subsetting, use:
-    Nz = len( ds['z_t'] ); # this enforces equal lengths
-    ds = ds.isel( z_w_top = [jj for jj in range(Nz) ] )
-    ds = ds.isel( z_w_bot = [jj for jj in range(Nz) ] );
-
+    ds = get_euc_area( ds ); 
     # Now physical / ocean-dependent conditions
     is_eastward = ds['UVEL'] > 5; # in cm / s 
     below_ML = ds['z_t'] > ( ds['HMXL']/100 );
