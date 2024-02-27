@@ -75,6 +75,7 @@ def lagged_correlation(x, y, max_lag = None):
     # Computed lagged correlations between two xr_objs or 1D arrays
     normalize = lambda data : ( data - np.mean( data ) ) \
                               / np.std( data )
+    # This current version computes normal correlation, does not take care of lagging
     c = np.correlate( normalize( x ) / len( x ) , 
                     normalize( y ) , 'full' );
     return c
@@ -99,6 +100,22 @@ def get_trend( xr_obj, for_dims ):
     coords = xr_obj['all_points'].coords;
     nu_obj = xr.DataArray( data = nu_dat , coords = coords ).unstack('all_points' )
     return nu_obj  
+
+classic_months = [ [12,1,2], [3,4,5], [6,7,8], [9,10,11] ]
+def separate_seasons( xr_obj , months = classic_months ):
+    # Group all data together by sets of months indicated in months (these define the seasons)
+    by_months = xr_obj.groupby('time.month')
+    by_season = [];
+    # Now iterate through the seasons
+    for jj in range( len( months ) ):
+        months_in_season = months[jj]; 
+        # Get time indices for data corresponding for this season:
+        month_inds = np.concatenate( [ by_months.groups[ mm ] for mm in months_in_season ] ); 
+        # Save corresponding data
+        by_season.append( xr_obj.isel( time = month_inds ).sortby('time') )
+    # Now concatenate onto a single xr object
+    by_season = xr.concat( by_season , dim = 'season' )
+    return by_season 
 
 
 
