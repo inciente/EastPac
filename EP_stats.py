@@ -84,7 +84,10 @@ def lagged_correlation(x, y, max_lag = None):
 def get_trend( xr_obj, for_dims ):
     # get temporal trend (per decade) in xr_obj
     # over_dims is a list indicating all non-temporal dimensions
-    xr_obj = xr_obj.stack( all_points = for_dims )
+    is_1D = len( for_dims ) == 0;
+    if not is_1D:
+        # unless object is already 1D
+    	xr_obj = xr_obj.stack( all_points = for_dims )
     timevec = np.array( [ (kk - datetime(1980,1,1) ).total_seconds() \
                 for kk in pd.to_datetime( xr_obj['time'].values ) ] )
     # replace nans with zeros
@@ -92,13 +95,19 @@ def get_trend( xr_obj, for_dims ):
     vals = xr_obj.values;
     vals[ mask ] = 0; # because polyfit crashes with nans
     coefs = np.polyfit( timevec, vals , 1 ) 
-    # put in mask for nans
-    coefs[ : , mask[0,:] ] = np.nan
+    
+    if not is_1D:
+        # put in mask for nans
+        coefs[ : , mask[0,:] ] = np.nan
+        coords = xr_obj['all_points'].coords
+    else:
+        coords = None
     # save into
     nu_dat = coefs[0] * (10*365*24*3600 ); # ttrend per decade
     # save as xr
-    coords = xr_obj['all_points'].coords;
-    nu_obj = xr.DataArray( data = nu_dat , coords = coords ).unstack('all_points' )
+    nu_obj = xr.DataArray( data = nu_dat , coords = coords )
+    if not is_1D:
+        nu_obj = nu_obj.unstack('all_points' )
     return nu_obj  
 
 classic_months = [ [12,1,2], [3,4,5], [6,7,8], [9,10,11] ]
