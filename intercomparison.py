@@ -186,7 +186,7 @@ class intercomparison:
             results[ configs[cc] ] = [ func( mm ) for mm in model_list ]; 
             try: 
                 # Try to concatenate ensemble members to a single object
-                results[ configs[cc] ] = xr.concat( results , dim = 'ensnum' );
+                results[ configs[cc] ] = xr.concat( results[ configs[cc] ] , dim = 'ensnum' );
             except:
                 pass    
         return results

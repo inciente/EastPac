@@ -36,9 +36,14 @@ def get_dx_dy( xr_obj ):
     # Translate to xarray to maintain dimensions
     xx = xr.DataArray( xx, dims = dims, coords = coords )
     yy = xr.DataArray( yy, dims = dims, coords = coords );
-    dx = 110e3 * xx.differentiate('lon') * area_weights(xr_obj)
-    dy = 110e3 * yy.differentiate('lat')
-
+    try:
+        dx = 110e3 * xx.differentiate('lon') * area_weights(xr_obj)
+    except: 
+        dx = None
+    try:    
+        dy = 110e3 * yy.differentiate('lat')
+    except:
+        dy = None; # in case object has no lat 
     return dx, dy
 
 def get_dz( xr_obj , source = 'ocn' ):
@@ -83,6 +88,8 @@ def pressure( ds , add_atm = None ):
                 fill_value = 0 ) + weight / 2; 
     # cumsum.shift integrates weight of cells above only
     # weight/2 accoutns for weight of current cell 
+    pressure.attrs['units'] = 'Pa [N m-2]'
+    pressure.attrs['description'] = 'Ocean pressure at depth z_t'
     return pressure 
 
 
