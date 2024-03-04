@@ -67,7 +67,23 @@ def pacific_gradient( xr_obj ):
     EP_xr = xr_obj.sel( lon = EP_lon ).mean( dim = 'lon' );
     return (EP_xr - WP_xr)
 
-
+def pressure( ds , add_atm = None ):
+    g = 9.81; rho = ds['RHO'] * 1000; # fix units
+    # Take output from POP2 (ds) and compute pressure everywhere
+    psurf = ds['SSH'] / 100 * g * rho.isel( z_t = 0 ); 
+    # Option to add atmospheric pressure
+    if add_atm is not None:
+        psurf = psurf + add_atm; # this assumes interpolation of PSL to ocean grid
+    # Get dz to integrate density
+    dz = get_dz( ds ); 
+    # Compute weight of each model cell
+    weight = ( rho * g * dz )
+    # Now write the pressure sum
+    pressure = psurf + weight.cumsum( 'z_t' ).shift( z_t = 1 ,
+                fill_value = 0 ) + weight / 2; 
+    # cumsum.shift integrates weight of cells above only
+    # weight/2 accoutns for weight of current cell 
+    return pressure 
 
 
 
