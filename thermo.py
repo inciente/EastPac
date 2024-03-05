@@ -1,5 +1,7 @@
 import xarray as xr; import pandas as pd; 
 import gsw; import numpy as np; 
+from shapely import Polygon, Point
+
 
 '''
 Functions to deal with the thermodynamics of ocean and atmospheric components
@@ -91,6 +93,24 @@ def pressure( ds , add_atm = None ):
     pressure.attrs['units'] = 'Pa [N m-2]'
     pressure.attrs['description'] = 'Ocean pressure at depth z_t'
     return pressure 
+
+def polygon_mask( xr_obj , poly, dims = ['lon','lat'] ):
+    # Check what points in the xr_obj grid are within the polygon
+    # and return map of booleans.
+    mx, my = np.meshgrid( xr_obj[ dims[0] ] , xr_obj[ dims[1] ] ); 
+    ar_shape = mx.shape; # to reshape final product
+    mx = mx.flatten(); my = my.flatten();
+
+    # create points from mx, my coords and compare to polygon
+    points = [ Point( ( mx[jj], my[jj] ) ) for jj in range( len( mx ) ) ];
+    inside = np.array( [ pp.within( poly ) for pp in points ] ); # booleans
+    # --------- give inside the right dimensions and store as xarray
+    inside = xr.DataArray( data = inside.reshape( ar_shape ),
+                           coords = { dims[1] : xr_obj[ dims[1] ], dims[0] : xr_obj[ dims[0] ] } )
+    return inside
+
+
+
 
 
 
