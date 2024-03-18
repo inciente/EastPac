@@ -109,7 +109,79 @@ def polygon_mask( xr_obj , poly, dims = ['lon','lat'] ):
                            coords = { dims[1] : xr_obj[ dims[1] ], dims[0] : xr_obj[ dims[0] ] } )
     return inside
 
+def add_measures_of_volume( ds ):
+    ds['dz'] = get_dz( ds ); 
+    ds['dx'], ds['dy'] = get_dx_dy( ds )
+    return ds 
 
+def mass_histograms( ds ):
+    # Return histograms of density and height, weighted by cell volume
+    stacker = {'space' : [ 'z_t','lat','lon' ] };
+
+    # reshape density, and heights available
+    rho_to_order = 1000 * ds['RHO'].stack( stacker );
+    z_available = (ds['z_t'] * ds['RHO']/ds['RHO']).stack( stacker)
+    mask = ~ np.isnan( rho_to_order ).compute(); # remove nans
+
+    # compute cell volume to weight space and mass available
+    cell_volume = (ds['dx'] * ds['dy'] * ds['dz']).stack( stacker )
+    
+    # define bins for histograms
+    rho_bins = np.arange( 1012.5, 1065, 0.25 ); 
+    z_bins = xr.concat( [ ds['z_t'] - 1 , ds['z_t'].isel( \
+                   z_t = -1 ) + 1 ], dim = 'z_t' )
+
+    # compute histograms
+    rho_hist = np.histogram( rho_to_order[mask] , bins = rho_bins,
+                   weights = cell_volume[mask] )
+    z_hist = np.histogram( z_available[mask] , bins = z_bins,
+                   weights = cell_volume[mask] );
+    
+    return rho_hist, z_hist
+
+
+def reference_density( ds , subset = None ): 
+    # Rearrange density to find profile with minimum PE
+    ds = add_measures_of_volume( ds )    
+    if subset is not None:
+        ds = subset( ds ); # will get warning if not callable
+    ds = ds[ ['RHO','dz','dy','dx'] ];
+    try:
+        ds = ds.mean('time'); # can't do for each step
+    except: 
+        pass 
+    # compute pdfs of rho and z weighted by volume
+    rhoh, zh = mass_histograms( ds )
+    
+    # cross-correlate cumulative distributions of height and rho
+    # --- kill tail to avoid super light water taking up surface
+    cumulative = np.linspace( sum(zh[0])*2.5e-3, sum(zh[0])*0.999,
+                     1500 ); 
+    ref_z = np.interp( cumulative , np.cumsum( zh[0] ), 
+                       zh[1][0:-1] + 1 )
+    ref_rho = np.interp( cumulative, np.cumsum( rhoh[0] ), 
+                       rhoh[1][0:-1] + 0.125 ) 
+    
+    # repackage ref_rho as xr.dataarray
+    ref_rho = xr.DataArray( data = ref_rho , coords = \
+               {'z_t':ref_z } )
+    ref_rho = ref_rho.interp( z_t = ds['z_t'] )
+    
+    return ref_rho 
+
+
+''' 
+BELOW IS A SET OF CLASSES MEANT TO DO INTEGRATIONS, TRANSPORT CALCULATIONS, AND OTHERS
+'''
+
+class face:
+    def __init__( self , lat, xlims ):
+        self.lat = lat; 
+        self.xlims = xlims;
+
+    def eval_xr( self, xr_obj ):
+        # Evaluate object on face
+        pass 
 
 
 
