@@ -140,6 +140,32 @@ def mass_histograms( ds ):
     return rho_hist, z_hist
 
 
+def divide_surface_layer( ds, z_hist ):
+    '''
+     take z output from mass_histograms, and add a super-thin
+     layer in the surface. this helps allocate super-light water
+    '''
+    zbins = z_hist[1]; # bins
+    z_vol = z_hist[0]; # volume within each bin
+    surf_vol = z_vol[0]; 
+    # volume in surface layer, which is defined by z limits [ zbins[0], zbins[1] ] 
+    surf_thickness = ds['dz'][0].values; # thickness of surface layer
+    nu_bins = np.array( [ 0, 0.0001, 0.001, 0.005, 0.01 , 0.02 , 
+            0.05, 0.1, 0.25, 0.5, 0.8, 1 , zbins[0] ] ); # new zlims to add before zbins
+    nu_dz = np.diff( nu_bins ); # thickness of new layers (this well completely replace surface layer)
+    # ---- 
+    volume_left = ( surf_thickness - nu_bins[-1] ) / surf_thickness * surf_vol; # needs to be further divided in two 
+    z_vol[0] = volume_left; # update volume of surface layer that shrunk
+    # -------- now allocate lost volume to new layers
+    new_volume = surf_vol - volume_left; # to be allocated across new layers
+    allocated_volumes = nu_dz / ( nu_bins[-1]-nu_bins[0] )  * new_volume
+    # update z_hist
+    z_hist[1] = np.concatenate( [ nu_bins[:-1] , zbins ] ); # bin edges
+    z_hist[0] = np.concatenate( [ allocated_volumes, z_vol ] );
+    
+    return z_hist
+
+
 def reference_density( ds , subset = None ): 
     # Rearrange density to find profile with minimum PE
     ds = add_measures_of_volume( ds )    
@@ -152,11 +178,12 @@ def reference_density( ds , subset = None ):
         pass 
     # compute pdfs of rho and z weighted by volume
     rhoh, zh = mass_histograms( ds )
-    
+    zh = divide_surface_layer( ds, list( zh ) ); # update
     # cross-correlate cumulative distributions of height and rho
     # --- kill tail to avoid super light water taking up surface
     cumulative = np.linspace( sum(zh[0])*2.5e-3, sum(zh[0])*0.999,
                      1500 ); 
+    
     ref_z = np.interp( cumulative , np.cumsum( zh[0] ), 
                        zh[1][0:-1] + 1 )
     ref_rho = np.interp( cumulative, np.cumsum( rhoh[0] ), 
