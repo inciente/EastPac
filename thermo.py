@@ -74,10 +74,18 @@ def pacific_gradient( xr_obj ):
     EP_xr = xr_obj.sel( lon = EP_lon ).mean( dim = 'lon' );
     return (EP_xr - WP_xr)
 
-def pressure( ds , add_atm = None ):
+def pressure( ds , add_atm = None, ref_rho = None ):
     g = 9.81; rho = ds['RHO'] * 1000; # fix units
+    
+    if ref_rho is not None:
+        # in case we want to compute pressure anomaly
+        rho = rho - ref_rho; 
     # Take output from POP2 (ds) and compute pressure everywhere
-    psurf = ds['SSH'] / 100 * g * rho.isel( z_t = 0 ); 
+    psurf = ds['SSH'] / 100 * g * rho.isel( z_t = 0 );
+    
+    if ref_rho is not None:
+        # a;sp get anomaly of ssh
+        psurf = psurf - psurf.mean( ['lon','lat'] ) 
     # Option to add atmospheric pressure
     if add_atm is not None:
         psurf = psurf + add_atm; # this assumes interpolation of PSL to ocean grid
