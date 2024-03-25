@@ -74,18 +74,23 @@ def pacific_gradient( xr_obj ):
     EP_xr = xr_obj.sel( lon = EP_lon ).mean( dim = 'lon' );
     return (EP_xr - WP_xr)
 
-def pressure( ds , add_atm = None, ref_rho = None ):
+def pressure( ds , add_atm = None, ref_rho = None, 
+            ssh_val = None:
     g = 9.81; rho = ds['RHO'] * 1000; # fix units
     
     if ref_rho is not None:
         # in case we want to compute pressure anomaly
         rho = rho - ref_rho; 
-    # Take output from POP2 (ds) and compute pressure everywhere
+    # Take output from POP2 (ds) and compute pressure everywhere 
+    if ssh_val is not None:
+        ds['SSH'] = ds['SSH'] - ssh_val;
     psurf = ds['SSH'] / 100 * g * rho.isel( z_t = 0 );
     
-    if ref_rho is not None:
-        # a;sp get anomaly of ssh
-        psurf = psurf - psurf.mean( ['lon','lat'] ) 
+    #if ref_rho is not None:
+    #    if ssh_val is not None:
+    #        psurf = psurf - ssh_val 
+    #    # a;sp get anomaly of ssh
+    #    psurf = psurf - psurf.mean( ['lon','lat'] ) 
     # Option to add atmospheric pressure
     if add_atm is not None:
         psurf = psurf + add_atm; # this assumes interpolation of PSL to ocean grid
@@ -203,23 +208,5 @@ def reference_density( ds , subset = None ):
     ref_rho = ref_rho.interp( z_t = ds['z_t'] )
     
     return ref_rho 
-
-
-''' 
-BELOW IS A SET OF CLASSES MEANT TO DO INTEGRATIONS, TRANSPORT CALCULATIONS, AND OTHERS
-'''
-
-class face:
-    def __init__( self , lat, xlims ):
-        self.lat = lat; 
-        self.xlims = xlims;
-
-    def eval_xr( self, xr_obj ):
-        # Evaluate object on face
-        pass 
-
-
-
-
 
 
