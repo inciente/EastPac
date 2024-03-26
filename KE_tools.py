@@ -4,7 +4,7 @@ import numpy as np;
 import pandas as pd; import xarray as xr; 
 sys.path.append('/home/noelgb/repositories/EastPac/')
 import intercomparison, thermo
-sys.path.append('/home/noelgb/config_files')
+sys.path.append('/home/noelgb/notebooks/config_files')
 from open_jsons import *
 # --------------
 
@@ -12,7 +12,7 @@ from open_jsons import *
 Functions to compute the energy budget of the upper Pacific Ocean
 '''
 
-def KE_flux( pop_ds, integrate = True ):
+def meridional_KE_flux( pop_ds, integrate = True ):
     # computes KE advective flux in given direction
     # pop_ds is xr.dataset with pop2 output
     # direction determines advective variable
@@ -24,7 +24,7 @@ def KE_flux( pop_ds, integrate = True ):
         KE = xz_integral( KE, pop_ds )
     return KE
 
-def merid_pwork( pop_ds, ref_rho, ref_ssh, integrate = True  ):
+def meridional_pwork( pop_ds, ref_rho, ref_ssh, integrate = True  ):
     # Compute pressure the meridional pressure work
     vel = pop_ds[ 'VVEL' ] / 100
     # specify reference density and ssh 
@@ -35,7 +35,18 @@ def merid_pwork( pop_ds, ref_rho, ref_ssh, integrate = True  ):
         pwork = xz_integral( pwork, pop_ds )
     return pwork
 
-def mixing_work( pop_ds ):
+def meridional_APE_flux( pop_ds, ref_rho, integrate = True ):
+    # compute APE and its meridional flux
+    rho_prime = pop_ds['RHO'] * 1000 - ref_rho; 
+    N2_ref = 9.81 / 1025 * ref_rho.differentiate( 'z_t' )
+    APE = 9.81 * rho_prime ** 2 / ( 2 * 1025 * N2_ref )
+    APE_flux = pop_ds['VVEL'] / 100 * APE
+    
+    if integrate:
+        APE_flux = xz_integral( APE_flux, pop_ds )
+    return APE_flux
+
+def mixing_work( pop_ds, integrate = True ):
     # volume integral of tpower. assuming there's been some
     # spatial subsetting (or application of where)
     power = pop_ds['TPOWER'] * 1e-7 * 1e6 # to J / m3 / s
@@ -44,7 +55,7 @@ def mixing_work( pop_ds ):
                                pop_ds )
     return power
 
-def wwork( pop_ds, integrate = True ):
+def wind_work( pop_ds, integrate = True ):
     # wind work on the ocean surface
     power = pop_ds['TAUX'] * pop_ds['UVEL'].isel( z_t = 0 )
     power += pop_ds['TAUY'] * pop_ds['VVEL'].isel( z_t = 0 )
@@ -54,19 +65,19 @@ def wwork( pop_ds, integrate = True ):
         power = xy_integral( power, pop_ds )
     return power  
  
-def upwork( pop_ds, ref_rho , integrate = True ):
+def upwelling_work( pop_ds, ref_rho , integrate = True ):
     # energy cost of upwelling
     rho = pop_ds['RHO'] * 1000 - ref_rho
     power = rho * 9.81 * pop_ds['WVEL'].rename( {'z_w_top':'z_t'} )
     if integrate:
-        power = xyz_integral( power )
+        power = xyz_integral( power , pop_ds )
     return power
 
 # -------- functions for spatial subsetting and section management
 
 def basin_mask():
     # Load the WOA basin mask at 100 m depth
-    path = '/home/noelgb/data/ocean_masks/WOA_basins_100m.nc'
+    path = '/home/noelgb/data/ocean_mask/WOA_basins_100m.nc'
     mask = xr.open_dataset( path ); 
     # change longitude from -180 to 0-360
     nulon = mask['lon'].values;
@@ -80,7 +91,7 @@ def basin_mask():
 def pacific_only( xr_obj ):
     # Apply WOA mask to object, leaving only data inside the Pacific
     mask = basin_mask(); 
-    mask = mask.interp( lat = xr_obj['lat'] ).interp( \
+    mask = mask['basins'].interp( lat = xr_obj['lat'] ).interp( \
                         lon = xr_obj['lon'] )
     return xr_obj.where( mask == 2 )
 
@@ -138,17 +149,60 @@ def prepare_model_for_energy( model ):
     # get metrics and spatial subsetting
     ds = ds.sel( lat = slice( -40, 40 ) );
     ds = ds.sel( lon = slice( 100, 295 ) );
-    ds = pacific_only( ds )
+    ds = pacific_only( ds );
+    ds = ds.isel( time = [0,12,24] ); # for speed up in testing
     # get reference density and ssh
     ds['rho_ref'] = thermo.reference_density( ds )
     ds['mean_ssh'] = ds['SSH'].mean(['lon','lat','time']).persist()
     return ds 
 
+def all_merid_fluxes( pop_ds ):
+    # compute all meridional fluxes from functions in this module
+    fluxes = xr.Dataset()
+    fluxes['adv'] = meridional_KE_flux( pop_ds , integrate = True );
+    fluxes['pwork'] = meridional_pwork( pop_ds , 
+                         ref_rho = pop_ds['rho_ref'], 
+                         ref_ssh = pop_ds['mean_ssh'],
+                         integrate = True )
+    fluxes['APE_adv'] = meridional_APE_flux( pop_ds , 
+                         ref_rho = pop_ds['rho_ref'], 
+                         integrate = True )
+    return fluxes 
+
+def all_conversions( pop_ds ):
+    # compute all energy conversions involving area/volume integrals
+    # each function returns a time series
+    conversions = xr.Dataset()
+    conversions['upwelling'] = upwelling_work( pop_ds , 
+                                    ref_rho = pop_ds['rho_ref'],
+                                    integrate = True )
+    conversions['windwork'] = wind_work( pop_ds , integrate = True )
+    conversions['mixing'] = mixing_work( pop_ds, integrate = True )
+    return conversions
+
 def eval_KE( model ):
     ds = prepare_model_for_energy( model )
-    latitudes = [-30, -15, -3, 3, 15, 30 ]
+    latitudes = [-35, -15, -3, 3, 15, 35 ]
     # Get all the components of the energy budget
-    pass
+    
+    # ---------- begin with meridional fluxes
+    ds_merid = ds.sel( lat = latitudes , method = 'nearest' );
+    fluxes = all_merid_fluxes( ds_merid ); 
+    
+    # ---------- now slice sections where area or volume ints involved
+    area_quants = []
+    for jj in range( len( latitudes ) - 1 ):
+        lat_range = slice( latitudes[jj] , latitudes[jj+1] )
+        ds_here = ds.sel( lat = lat_range ); # this will be integrated
+        conversions = all_conversions( ds_here )
+        conversions = conversions.assign_coords( { 'lat': [latitudes[jj]] } )
+        area_quants.append( conversions )
+    # concatenate all area and volume integrals
+    conversions = xr.concat( area_quants, dim = 'lat' )
+    return fluxes, conversions 
+
+
+    
 
     
 
