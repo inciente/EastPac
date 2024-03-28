@@ -75,7 +75,7 @@ def pacific_gradient( xr_obj ):
     return (EP_xr - WP_xr)
 
 def pressure( ds , add_atm = None, ref_rho = None, 
-            ssh_val = None:
+           ssh_val = None):
     g = 9.81; rho = ds['RHO'] * 1000; # fix units
     
     if ref_rho is not None:
@@ -92,10 +92,14 @@ def pressure( ds , add_atm = None, ref_rho = None,
     #    # a;sp get anomaly of ssh
     #    psurf = psurf - psurf.mean( ['lon','lat'] ) 
     # Option to add atmospheric pressure
+
     if add_atm is not None:
         psurf = psurf + add_atm; # this assumes interpolation of PSL to ocean grid
     # Get dz to integrate density
-    dz = get_dz( ds ); 
+    try:
+        dz = ds['dz']
+    except:
+        dz = get_dz( ds ); 
     # Compute weight of each model cell
     weight = ( rho * g * dz )
     # Now write the pressure sum
@@ -129,7 +133,7 @@ def add_measures_of_volume( ds ):
 
 def mass_histograms( ds ):
     # Return histograms of density and height, weighted by cell volume
-    stacker = {'space' : [ 'z_t','lat','lon' ] };
+    stacker = {'space' : [ dim for dim in ds.dims if dim in ['z_t','lat','lon'] ] };
 
     # reshape density, and heights available
     rho_to_order = 1000 * ds['RHO'].stack( stacker );
@@ -194,7 +198,7 @@ def reference_density( ds , subset = None ):
     zh = divide_surface_layer( ds, list( zh ) ); # update
     # cross-correlate cumulative distributions of height and rho
     # --- kill tail to avoid super light water taking up surface
-    cumulative = np.linspace( sum(zh[0])*2.5e-3, sum(zh[0])*0.999,
+    cumulative = np.linspace( 0, sum(zh[0]) ,
                      1500 ); 
     
     ref_z = np.interp( cumulative , np.cumsum( zh[0] ), 
