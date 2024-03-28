@@ -136,9 +136,11 @@ def mass_histograms( ds ):
     stacker = {'space' : [ dim for dim in ds.dims if dim in ['z_t','lat','lon'] ] };
 
     # reshape density, and heights available
-    rho_to_order = 1000 * ds['RHO'].stack( stacker );
+    #rho_to_order = 1000 * ds['RHO'].stack( stacker );
+    sigma_to_order = 1000 + gsw.sigma0( ds['SALT'], ds['TEMP'] )
+    sigma_to_order = sigma_to_order.stack( stacker );
     z_available = (ds['z_t'] * ds['RHO']/ds['RHO']).stack( stacker)
-    mask = ~ np.isnan( rho_to_order ).compute(); # remove nans
+    mask = ~ np.isnan( sigma_to_order ).compute(); # remove nans
 
     # compute cell volume to weight space and mass available
     cell_volume = (ds['dx'] * ds['dy'] * ds['dz']).stack( stacker )
@@ -149,13 +151,24 @@ def mass_histograms( ds ):
                    z_t = -1 ) + 1 ], dim = 'z_t' )
 
     # compute histograms
-    rho_hist = np.histogram( rho_to_order[mask] , bins = rho_bins,
-                   weights = cell_volume[mask] )
+    #rho_hist = np.histogram( rho_to_order[mask] , bins = rho_bins,
+    #               weights = cell_volume[mask] )
+    
+    sigma_hist = np.histogram( sigma_to_order[mask] , bins = rho_bins , 
+                  weights = cell_volume[mask] );
+
     z_hist = np.histogram( z_available[mask] , bins = z_bins,
                    weights = cell_volume[mask] );
     
-    return rho_hist, z_hist
+    #return rho_hist, z_hist
+    return sigma_hist, z_hist
 
+def rho_from_sigma( sigma, pressure ):
+    # derived from least square fit. meant to be used in reference_density
+    # sigma must be 1020-ish (not 20-ish)
+    # pressure must be in dbar (or meters)
+    rho = sigma * 1.052076 + pressure * 0.004589025 - 53.3224
+    return rho 
 
 def divide_surface_layer( ds, z_hist ):
     '''
@@ -188,13 +201,15 @@ def reference_density( ds , subset = None ):
     ds = add_measures_of_volume( ds )    
     if subset is not None:
         ds = subset( ds ); # will get warning if not callable
-    ds = ds[ ['RHO','dz','dy','dx'] ];
+    ds = ds[ ['RHO','TEMP','SALT','dz','dy','dx'] ];
     try:
         ds = ds.mean('time'); # can't do for each step
     except: 
         pass 
     # compute pdfs of rho and z weighted by volume
-    rhoh, zh = mass_histograms( ds )
+    # current version does pdf of sigma... in development 
+    #rhoh, zh = mass_histograms( ds )
+    sigmah, zh = mass_histograms( ds );
     zh = divide_surface_layer( ds, list( zh ) ); # update
     # cross-correlate cumulative distributions of height and rho
     # --- kill tail to avoid super light water taking up surface
@@ -203,9 +218,13 @@ def reference_density( ds , subset = None ):
     
     ref_z = np.interp( cumulative , np.cumsum( zh[0] ), 
                        zh[1][0:-1] + 1 )
-    ref_rho = np.interp( cumulative, np.cumsum( rhoh[0] ), 
-                       rhoh[1][0:-1] + 0.125 ) 
+    #ref_rho = np.interp( cumulative, np.cumsum( rhoh[0] ), 
+    #                   rhoh[1][0:-1] + 0.125 ) 
     
+    ref_sigma = np.interp( cumulative , np.cumsum( sigmah[0] ), 
+                      sigmah[1][0:-1] + 0.125 )
+    ref_rho = rho_from_sigma( ref_sigma, ref_z )
+
     # repackage ref_rho as xr.dataarray
     ref_rho = xr.DataArray( data = ref_rho , coords = \
                {'z_t':ref_z } )
