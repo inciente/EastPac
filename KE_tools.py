@@ -39,7 +39,8 @@ def meridional_APE_flux( pop_ds, ref_rho, integrate = True ):
     # compute APE and its meridional flux
     rho_prime = pop_ds['RHO'] * 1000 - ref_rho; 
     N2_ref = 9.81 / 1025 * ref_rho.differentiate( 'z_t' )
-    APE = 9.81 * rho_prime ** 2 / ( 2 * 1025 * N2_ref )
+    APE = 9.81 ** 2 * rho_prime ** 2 
+    APE = APE / ( 2 * 1025 * N2_ref )
     APE_flux = pop_ds['VVEL'] / 100 * APE
     
     if integrate:
@@ -68,7 +69,7 @@ def wind_work( pop_ds, integrate = True ):
 def upwelling_work( pop_ds, ref_rho , integrate = True ):
     # energy cost of upwelling
     rho = pop_ds['RHO'] * 1000 - ref_rho
-    power = rho * 9.81 * pop_ds['WVEL'].rename( {'z_w_top':'z_t'} )
+    power = rho * 9.81 * pop_ds['WVEL'].values / 100
     if integrate:
         power = xyz_integral( power , pop_ds )
     return power
@@ -153,6 +154,8 @@ def prepare_model_for_energy( model ):
     ds = ds.isel( time = [0,12,24] ); # for speed up in testing
     # get reference density and ssh
     ds['rho_ref'] = thermo.reference_density( ds )
+    ds['rho_ref'] = ds['rho_ref'].interp( z_t = ds['z_t'] , method = 'linear', 
+                                         kwargs = {'fill_value': 'extrapolate' } )
     ds['mean_ssh'] = ds['SSH'].mean(['lon','lat','time']).persist()
     return ds 
 
