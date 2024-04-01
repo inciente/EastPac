@@ -3,6 +3,13 @@ import numpy as np;
 import pandas as pd; from datetime import datetime, timedelta;
 from scipy import signal
 
+def numeric_time( xr_time ):
+    # Input is xr.DataArray representing time coordinate
+    # Output must be same data in numeric format, with units of seconds.
+    t0 = datetime( 1900, 1, 1);
+    timevec = np.array( [ ( pd.to_datetime( tt ) - t0 ).total_seconds() \
+                         for tt in xr_time.values ] );
+    return timevec
 
 def seasonal_matrix( timevec, n_terms , leap_years = False ):
     '''
@@ -15,9 +22,7 @@ def seasonal_matrix( timevec, n_terms , leap_years = False ):
 
     N = len( timevec ); 
     # t0 must be middle point in order for coef0 to be the mean
-    t0 = datetime( 1900, 1, 1 )
-    xaxis = np.array([ (pd.to_datetime(jj) - t0 ).total_seconds() \
-            for jj in timevec.values ])
+    xaxis = numeric_time( timevec )
     year_freq = 2 * np.pi / (3600*24*year)
 
     # Create empty matrix
@@ -88,8 +93,8 @@ def get_trend( xr_obj, for_dims ):
     if not is_1D:
         # unless object is already 1D
     	xr_obj = xr_obj.stack( all_points = for_dims )
-    timevec = np.array( [ (kk - datetime(1980,1,1) ).total_seconds() \
-                for kk in pd.to_datetime( xr_obj['time'].values ) ] )
+    timevec = numeric_time( xr_obj['time'] )
+
     # replace nans with zeros
     mask = np.isnan( xr_obj.values );# mask = np.isnan( vals ); 
     vals = xr_obj.values;
@@ -103,7 +108,7 @@ def get_trend( xr_obj, for_dims ):
     else:
         coords = None
     # save into
-    nu_dat = coefs[0] * (10*365*24*3600 ); # ttrend per decade
+    nu_dat = coefs[0] * ( 10*365*24*3600 ); # ttrend per decade
     # save as xr
     nu_obj = xr.DataArray( data = nu_dat , coords = coords )
     if not is_1D:
