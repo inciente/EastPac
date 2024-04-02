@@ -6,6 +6,7 @@ sys.path.append('/home/noelgb/repositories/EastPac/')
 import intercomparison, thermo
 sys.path.append('/home/noelgb/notebooks/config_files')
 from open_jsons import *
+from euc_tools import *
 # --------------
 
 ''' 
@@ -73,6 +74,14 @@ def upwelling_work( pop_ds, ref_rho , integrate = True ):
     if integrate:
         power = xyz_integral( power , pop_ds )
     return power
+
+def net_KE( ds, integrate = True ):
+    # compute net KE using UVEL2 variables
+    ke = ds['UVEL'] + ds['VVEL2'] + ds['WVEL2']
+    ke = ke / 1e4 * 1025 / 2 
+    if integrate:
+        ke = xyz_integral( ke )
+    return ke
 
 # -------- functions for spatial subsetting and section management
 
@@ -151,12 +160,14 @@ def prepare_model_for_energy( model ):
     ds = ds.sel( lat = slice( -40, 40 ) );
     ds = ds.sel( lon = slice( 100, 295 ) );
     ds = pacific_only( ds );
-    ds = ds.isel( time = [0,12,24] ); # for speed up in testing
+    ds = ds.isel( time = range(60) ); # for speed up in testing
     # get reference density and ssh
     ds['rho_ref'] = thermo.reference_density( ds )
     ds['rho_ref'] = ds['rho_ref'].interp( z_t = ds['z_t'] , method = 'linear', 
                                          kwargs = {'fill_value': 'extrapolate' } )
     ds['mean_ssh'] = ds['SSH'].mean(['lon','lat','time']).persist()
+    # focus only on the upper 500 m 
+    #ds = vertical_chunk( ds , 500 )
     return ds 
 
 def all_merid_fluxes( pop_ds ):
@@ -183,11 +194,11 @@ def all_conversions( pop_ds ):
     conversions['mixing'] = mixing_work( pop_ds, integrate = True )
     return conversions
 
-def eval_KE( model ):
-    ds = prepare_model_for_energy( model )
+def eval_KE( ds ):
+    #ds = prepare_model_for_energy( model )
     latitudes = [-35, -15, -3, 3, 15, 35 ]
     # Get all the components of the energy budget
-    
+     
     # ---------- begin with meridional fluxes
     ds_merid = ds.sel( lat = latitudes , method = 'nearest' );
     fluxes = all_merid_fluxes( ds_merid ); 
