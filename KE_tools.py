@@ -77,10 +77,10 @@ def upwelling_work( pop_ds, ref_rho , integrate = True ):
 
 def net_KE( ds, integrate = True ):
     # compute net KE using UVEL2 variables
-    ke = ds['UVEL'] + ds['VVEL2'] + ds['WVEL2']
+    ke = ds['UVEL'] + ds['VVEL2'] + ds['WVEL2'].values
     ke = ke / 1e4 * 1025 / 2 
     if integrate:
-        ke = xyz_integral( ke )
+        ke = xyz_integral( ke, ds )
     return ke
 
 # -------- functions for spatial subsetting and section management
@@ -105,6 +105,8 @@ def pacific_only( xr_obj ):
                         lon = xr_obj['lon'] )
     return xr_obj.where( mask == 2 )
 
+# -------------- CALCULUS TOOLS
+
 def xy_integral( xr_obj, parent_ds ):
     # return area integral (lon, lat)
     data = ( xr_obj * parent_ds['dx'] * parent_ds['dy'] )
@@ -125,6 +127,12 @@ def xyz_integral( xr_obj , parent_ds ):
     data = xy_integral( xr_obj, parent_ds )
     data = z_integral( data, parent_ds )
     return data 
+
+def horizontal_gradient( xr_obj ):
+    lon_deriv = xr_obj.differentiate('lon') / ( \
+         110e3 * np.cos( np.pi * xr_obj['lat'] / 180 ) )
+    lat_deriv = xr_obj.differentiate('lat') / 110e3
+    return lon_deriv, lat_deriv
 
 '''
 LOOKS LIKE ITS GOING TO BE EASIER TO DO WITHOUT THIS CLASS
