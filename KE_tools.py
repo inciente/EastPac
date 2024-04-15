@@ -134,27 +134,6 @@ def horizontal_gradient( xr_obj ):
     lat_deriv = xr_obj.differentiate('lat') / 110e3
     return lon_deriv, lat_deriv
 
-'''
-LOOKS LIKE ITS GOING TO BE EASIER TO DO WITHOUT THIS CLASS
-'''
-#class lat_line:
-#    
-#    def __init__( self , lat, xlims, ds ):
-#        self.lat = lat; 
-#        self.xlims = xlims;
-#        #self.ds = self.eval_xr( ds ); # parent xr to inherit info
-#
-#    def eval_xr( self, xr_obj ):
-#        # Apply spatial subsetting 
-#        xr_obj = xr_obj.sel( lon = self.xlims ).sel( lat = self.lat,
-#                  method = 'nearest' )
-#        return xr_obj 
-#
-#    def area_integral( self, xr_obj, parent_ds ):
-#        xr_obj = self.eval_xr( xr_obj )
-#        # integrate over depth and longitude
-#        data = ( xr_obj * self.ds['dx'] * self.ds['dy'] ).sum( \
-#                 ['lon','z_t'] )
 
 
 ''' 
@@ -224,8 +203,144 @@ def eval_KE( ds ):
     return fluxes, conversions 
 
 
-    
+''' 
+by now (April 15, 2024) it looks like i've settled on working under the Tailleux (2018) formalism.
+Therefore, functions above might be deleted at some point. Whatever the case is, the class below 
+is becoming the main focus of development now.
+'''    
 
-    
+
+def equality_check( arr1, arr2 ):
+    # check that two arrays are equal, element by element
+
+    # first compare lengths
+    if ( len( arr1 ) != len( arr2) ):
+        return False
+
+    # now check elements
+    for i in range( len( arr1 ) ):
+      
+        if ( arr1[i] != arr2[i] ):
+            # Fail one comparison fail whole thing
+            return False
+
+    # if you made it this far it means arrays are equal
+    return True
+
+
+class Tailleux:
+
+'''
+Methods designed to compute most variables needed under the Tailleux formalism. 
+
+Input:
+    ds    -    snapshot of POP2 dataset (no time dependence) 
+    rho_ref    reference density profile (may be computed from thermo.reference_density() )
+
+All quantities will be computed for all spatial domain in ds, so subset ds before instantiating this class.
+'''
+    def __init__( self, ds, rho_ref ):
+        
+        self.ds = ds; 
+        self.rho_ref = rho_ref;
+        # save rho values, since they will be used again and again
+        self.rho = ( self.ds['RHO'] * 1000 ).persist(); 
+        self.nan_mask = ~ np.isnan( self.rho ); # useful to have
+        # compute zr, since it will also be needed repeatedly
+        self.zr = self.get_zr().persist()
+
+    @property
+    def ds(self):
+        return self._ds
+
+    @ds.setter
+    def ds(self, data):
+        if 'time' in list( data.dims ):
+            raise Exception('Cannot instantiate class. Dataset has time dependence.')
+        self._ds = data
+
+    @property
+    def rho_ref( self ):
+        return self._rho_ref
+
+    @rho_ref.setter
+    def rho_ref( self, rho ):
+        # make sure that vertical coordinate is same as in ds
+        if equality_check( rho['z_t'] , self.ds['z_t'] ):
+            pass
+        else: 
+            raise Exception('Dataset and reference density have different vertical coordinates')
+
+    def get_zr( self ):
+        # Use ref_rho to assign a reference level to all rho(x,y,z)
+        # flip rho_ref to make rho the coordinate and z the variable
+        flipped_ref = xr.DataArray( data = self.rho_ref['z_t'].values , 
+                                    coords = {'rho':self.rho_ref.values} )
+
+        # Now interpolate to values of rho
+        zr = flipped_ref.interp( rho = self.rho )
+        return zr
+
+    def reference_pressure( self ):
+        # Compute pressure in reference density profile
+        
+        # Create xr dataset with dz and rho (so it can be passed to thermo.pressure)
+        dummy_data = xr.Dataset() 
+        dummy_data['RHO'] = self.rho_ref / 1000; 
+        dummy_data['dz'] = thermo.get_dz( self.ds )
+        dummy_data['SSH'] = self.ds['SSH'].mean(['lon','lat'])
+        
+        # compute reference pressure in Pa
+        ref_p = thermo.pressure( dummy_data )
+        
+        return ref_p
+
+
+    def enthalpy_diff( self ):
+        # Compute enthalpy at reference pressure at current AND reference levels
+        ref_p = self.reference_pressure() / 1e4 ; # scale to dbar
+        p_zr = ref_p.interp( z_t = self.zr ); # array with zr values throughout ds coords 
+ 
+        # Use gsw to get enthalpy with SALT, TEMP, PRESSURE
+        ent_simp = gsw.enthalpy_CT_exact( self.ds['SALT'] , self.ds['TEMP'] , ref_p )
+        ent_zr =  gsw.enthalpy_CT_exact( self.ds['SALT'] , self.ds['TEMP'] , p_zr );
+
+        return ent_simp - ent_zr 
+
+    def get_PI2( self ):
+        # Get full expression of PI2
+        # order of zr and z_t reversed because z is defined as depth here
+        pi2 = 9.81 * ( self.zr - self.ds['z_t'] ) + self.enthalpy_diff()
+        return pi2
+
+    def QG_APE( self ):
+        # Compute APE using the QG approximation, for comparison purposes
+        ape = 9.81 / 2 * ( self.rho - self.rho_ref ) * ( self.zr - self.rho['z_t'] )
+        return ape 
+
+    def rho_mod( self ):
+
+        # modified density rho * ( 1 - rho_0 / rho_h ) used in framework
+        rho_h = self.rho_ref.interp( z_t = self.zr )
+
+        return rho * ( 1 - self.rho_ref / rho_h )
+
+    def upwelling_work( self ):
+        # evaluate g * rho' * w 
+        work = 9.81 * self.rho_mod() * self.['WVEL'].values / 100
+        return work   
+        
+
+
+
+
+
+
+
+
+
+
+
+
 
 
