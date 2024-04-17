@@ -230,7 +230,7 @@ def equality_check( arr1, arr2 ):
 
 class Tailleux:
 
-'''
+    '''
 Methods designed to compute most variables needed under the Tailleux formalism. 
 
 Input:
@@ -238,7 +238,7 @@ Input:
     rho_ref    reference density profile (may be computed from thermo.reference_density() )
 
 All quantities will be computed for all spatial domain in ds, so subset ds before instantiating this class.
-'''
+    '''
     def __init__( self, ds, rho_ref ):
         
         self.ds = ds; 
@@ -327,11 +327,19 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
 
     def upwelling_work( self ):
         # evaluate g * rho' * w 
-        work = 9.81 * self.rho_mod() * self.['WVEL'].values / 100
+        work = 9.81 * self.rho_mod() * self['WVEL'].values / 100
         return work   
         
-
-
+    def advective_term( self, xr_obj, three_d = True ):
+        # compute gradient of xr_obj and dot product with advection
+        ox, oy = horizontal_gradient( xr_obj )
+        advec = self.ds['UVEL'] * ox + self.ds['VVEL'] * oy
+        
+        if three_d:
+            oz = - xr_obj.differentiate('z_t')
+            advec = advec + oz * ds['WVEL'].values
+        
+        return advec/100 
 
 
 
