@@ -270,6 +270,8 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
             pass
         else: 
             raise Exception('Dataset and reference density have different vertical coordinates')
+        self._rho_ref = rho
+
 
     def get_zr( self ):
         # Use ref_rho to assign a reference level to all rho(x,y,z)
