@@ -347,6 +347,38 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         
         return advec/100 
 
+    def diabatic_pi2( self ):
+        # Compute the diabatic change to ape rho * dot( pi2 )
+        # simplified as heat + salinity effects
+
+        # Quantities that we'll need straight from model
+        sst = self.ds['TEMP'].isel( z_t = 0 ).persist()
+        sal = self.ds['SALT'].isel( z_t = 0 ).persist()
+        h = self.ds['HMXL'].persist() / 100; # ML Depth
+        
+        # Others go through gsw
+        # Temp at surface and at reference levels
+        sst_insitu = gsw.t_from_CT( sal, sst, self.ds['z_t'][0] )
+        sst_at_zr = gsw.t_from_CT( sal, sst, self.zr.isel( z_t = 0 )) 
+
+        # Chemical potential at surface and ref levels
+        mu_surf = gsw.chem_potential_water_t_exact( sal, 
+                                sst_insitu, self.ds['z_t'][0] )
+        mu_at_zr = gsw.chem_potential_water_t_exact( sal, 
+                                sst_at_zr , self.zr.isel( z_t = 0 ) )
+ 
+        # Entropy change due to surface heating/cooling
+        entropy_change = self.ds['SHF'] / ( 273.15 + sst_insitu ) / h
+        # Salinity change due to evap and precip
+        salt_change = sal * ( np.abs( self.ds['EVAP_F'] ) \
+                              - self.ds['PREC_F'] ) / h 
+        
+        # Adiabatic changes to pi2 are thus
+        from_heat = ( sst_insitu - sst_at_zr ) * entropy_change
+        from_salt = ( mu_surf - mu_at_zr ) * salt_change 
+        return from_heat, from_salt
+
+
 
 
 
