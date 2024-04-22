@@ -1,4 +1,4 @@
-import sys; 
+import sys, gsw 
 import matplotlib.pyplot as plt; 
 import numpy as np; 
 import pandas as pd; import xarray as xr; 
@@ -276,11 +276,15 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
     def get_zr( self ):
         # Use ref_rho to assign a reference level to all rho(x,y,z)
         # flip rho_ref to make rho the coordinate and z the variable
-        flipped_ref = xr.DataArray( data = self.rho_ref['z_t'].values , 
-                                    coords = {'rho':self.rho_ref.values} )
+        flipped_ref = xr.DataArray( \
+                        data = self.rho_ref['z_t'].values , 
+                        coords = {'rho':self.rho_ref.values} )
 
         # Now interpolate to values of rho
-        zr = flipped_ref.interp( rho = self.rho )
+        zr = flipped_ref.interp( rho = self.rho, kwargs = {'fill_value':'extrapolate' } )
+        # Set zr = 5 wherever it is lower than that
+        nan_mask = ~ np.isnan( zr );
+        zr = zr.where( zr > 5 , other = 5 ).where( nan_mask );
         return zr
 
     def reference_pressure( self ):
@@ -320,16 +324,16 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         ape = 9.81 / 2 * ( self.rho - self.rho_ref ) * ( self.zr - self.rho['z_t'] )
         return ape 
 
-    def rho_mod( self ):
+    def rho_prime( self ):
 
         # modified density rho * ( 1 - rho_0 / rho_h ) used in framework
         rho_h = self.rho_ref.interp( z_t = self.zr )
 
-        return rho * ( 1 - self.rho_ref / rho_h )
+        return self.rho * ( 1 - self.rho_ref / rho_h )
 
     def upwelling_work( self ):
         # evaluate g * rho' * w 
-        work = 9.81 * self.rho_mod() * self['WVEL'].values / 100
+        work = 9.81 * self.rho_prime() * self.ds['WVEL'].values / 100
         return work   
         
     def advective_term( self, xr_obj, three_d = True ):
@@ -339,7 +343,7 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         
         if three_d:
             oz = - xr_obj.differentiate('z_t')
-            advec = advec + oz * ds['WVEL'].values
+            advec = advec + oz * self.ds['WVEL'].values
         
         return advec/100 
 
