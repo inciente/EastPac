@@ -48,14 +48,6 @@ def meridional_APE_flux( pop_ds, ref_rho, integrate = True ):
         APE_flux = xz_integral( APE_flux, pop_ds )
     return APE_flux
 
-def mixing_work( pop_ds, integrate = True ):
-    # volume integral of tpower. assuming there's been some
-    # spatial subsetting (or application of where)
-    power = pop_ds['TPOWER'] * 1e-7 * 1e6 # to J / m3 / s
-    if integrate: 
-        power = xyz_integral( power.rename( {'z_w_bot':'z_t'} ),
-                               pop_ds )
-    return power
 
 def wind_work( pop_ds, integrate = True ):
     # wind work on the ocean surface
@@ -67,13 +59,6 @@ def wind_work( pop_ds, integrate = True ):
         power = xy_integral( power, pop_ds )
     return power  
  
-def upwelling_work( pop_ds, ref_rho , integrate = True ):
-    # energy cost of upwelling
-    rho = pop_ds['RHO'] * 1000 - ref_rho
-    power = rho * 9.81 * pop_ds['WVEL'].values / 100
-    if integrate:
-        power = xyz_integral( power , pop_ds )
-    return power
 
 def net_KE( ds, integrate = True ):
     # compute net KE using UVEL2 variables
@@ -319,6 +304,12 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         pi2 = 9.81 * ( self.zr - self.ds['z_t'] ) + self.enthalpy_diff()
         return pi2
 
+    def boussinesq_PI2( self ):
+        # Get Boussinesq expression of APE. 
+        # PI_2 = g * int_zr ^z ( rho( p_0(z') ) - rho_0( z' ) ) / rho( p_0(z') ) dz'
+        pass
+
+
     def QG_APE( self ):
         # Compute APE using the QG approximation, for comparison purposes
         ape = 9.81 / 2 * ( self.rho - self.rho_ref ) * ( self.zr - self.rho['z_t'] )
@@ -378,6 +369,44 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         from_salt = ( mu_surf - mu_at_zr ) * salt_change 
         return from_heat, from_salt
 
+
+    def alt_diabatic( self ):
+        # Alternative (better?) method to compute diabatic changes to pi_2
+        # Distribute heat/salinity fluxes throughout ML and use 
+        # entropy derivatives
+
+        # create mask for mixed layer
+        mld = self.ds[ 'HMXL' ] / 100 
+        in_ml = self.ds[ 'z_t' ] <= mld 
+    
+
+        # temp and salinity in ML
+        ml_temp = self.ds[ 'TEMP' ].where( in_ml ).persist()
+        ml_salt = self.ds[ 'SALT' ].where( in_ml ).persist() 
+
+        # reference levels to be used
+        ml_z = self.ds[ 'z_t' ].where( in_ml )
+        ml_zr = self.zr.where( in_ml )
+
+        # in-situ temp and relative potential at z and zr
+        z_temp = gsw.t_from_CT( ml_salt, ml_temp, ml_z )
+        zr_temp = gsw.t_from_CT( ml_salt, ml_temp, ml_zr )
+
+        z_mu = gsw.chem_potential_water_t_exact( ml_salt, z_temp, ml_z )
+        zr_mu = gsw.chem_potential_water_t_exact( ml_salt, zr_temp, ml_zr )
+     
+        # compute diabatic temperature and salinity changes
+        temp_dot = self.ds[ 'SHF' ] / ( 1024 * 4e3 ) / mld
+        salt_dot = ml_salt * ( np.abs( self.ds[ 'EVAP_F' ] ) - self.ds[ 'PREC_F'] ) / mld
+
+        # first derivatives of specific entropy
+        det_ds, det_dt = gsw.entropy_first_derivatives( ml_salt.compute() , ml_temp.compute() )
+
+        # finally compute changes to potential energy
+        pi2_temp = ( z_temp - zr_temp ) * ( det_ds * salt_dot + det_dt * temp_dot )
+        pi2_salt = ( z_mu - zr_mu ) * salt_dot 
+ 
+        return pi2_temp , pi2_salt 
 
 
 
