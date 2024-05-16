@@ -306,8 +306,25 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
 
     def boussinesq_PI2( self ):
         # Get Boussinesq expression of APE. 
-        # PI_2 = g * int_zr ^z ( rho( p_0(z') ) - rho_0( z' ) ) / rho( p_0(z') ) dz'
-        pass
+        # begin with vertical displacement
+        DZ = self.zr - self.ds['z_t'] ;
+
+        # z-range over which density differences will be integrated
+        zrange = xr.concat( [ self.zr.expand( { 'zprime' : [0] } ) , 
+                        self.ds['z_t'].expand_dims( {'zprime' : [1] } ) ] , 
+                        dim = 'zprime' )
+        zrange = zrange.interp( zprime = np.arange( 0.05, 0.96, 0.1 ) ) ;
+
+        # Evaluate reference and virtual densities at zrange pressures
+        # This creates a new dimension zprime
+        rho_0_eval = self.rho_ref.interp( z_t = zrange ); 
+        rho_actual_eval = gsw.rho( self.ds['SALT'] , self.ds['TEMP'] , zrange )
+ 
+        # now integrate over zprime
+        pi2 = 9.81 * ( 1 - rho_0_eval / rho_actual_eval ).mean( 'zprime' ) * DZ 
+        
+        return pi2
+        
 
 
     def QG_APE( self ):
