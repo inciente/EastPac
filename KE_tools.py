@@ -310,7 +310,7 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         DZ = self.zr - self.ds['z_t'] ;
 
         # z-range over which density differences will be integrated
-        zrange = xr.concat( [ self.zr.expand( { 'zprime' : [0] } ) , 
+        zrange = xr.concat( [ self.zr.expand_dims( { 'zprime' : [0] } ) , 
                         self.ds['z_t'].expand_dims( {'zprime' : [1] } ) ] , 
                         dim = 'zprime' )
         zrange = zrange.interp( zprime = np.arange( 0.05, 0.96, 0.1 ) ) ;
@@ -322,7 +322,7 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
  
         # now integrate over zprime
         pi2 = 9.81 * ( 1 - rho_0_eval / rho_actual_eval ).mean( 'zprime' ) * DZ 
-        
+          
         return pi2
         
 
@@ -355,75 +355,40 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         
         return advec/100 
 
-    def diabatic_pi2( self ):
-        # Compute the diabatic change to ape rho * dot( pi2 )
-        # simplified as heat + salinity effects
-
-        # Quantities that we'll need straight from model
-        sst = self.ds['TEMP'].isel( z_t = 0 ).persist()
-        sal = self.ds['SALT'].isel( z_t = 0 ).persist()
-        h = self.ds['HMXL'].persist() / 100; # ML Depth
+    def ML_diabatic( self ):
+        # Compute the diabatic change to APE in the mixed layer
+        # Get ML mask plus 5 meters
+        h = self.ds['HMXL'] / 100 + 5
+        ml_mask = self.ds['z_t'] < h
         
-        # Others go through gsw
-        # Temp at surface and at reference levels
-        sst_insitu = gsw.t_from_CT( sal, sst, self.ds['z_t'][0] )
-        sst_at_zr = gsw.t_from_CT( sal, sst, self.zr.isel( z_t = 0 )) 
+        # actual and reference depths
+        actual_z = self.ds['z_t'].where( ml_mask ).persist()
+        virtual_z = self.zr.where( ml_mask ).persist()
 
-        # Chemical potential at surface and ref levels
-        mu_surf = gsw.chem_potential_water_t_exact( sal, 
-                                sst_insitu, self.ds['z_t'][0] )
-        mu_at_zr = gsw.chem_potential_water_t_exact( sal, 
-                                sst_at_zr , self.zr.isel( z_t = 0 ) )
- 
-        # Entropy change due to surface heating/cooling
-        entropy_change = self.ds['SHF'] / ( 273.15 + sst_insitu ) / h
-        # Salinity change due to evap and precip
-        salt_change = sal * ( np.abs( self.ds['EVAP_F'] ) \
-                              - self.ds['PREC_F'] ) / h 
+        # Get Theta and Salinity in mixed layer
+        theta = self.ds['TEMP'].where( ml_mask ).persist()
+        salt = self.ds['SALT'].where( ml_mask ).persist()
+
+        # Compute in-situ temperature and chem potential at z and z_r
+        temp_insitu = gsw.t_from_CT( salt, theta, actual_z )
+        temp_virtual = gsw.t_from_CT( salt, theta, virtual_z )
+
+        mu_insitu = gsw.chem_potential_water_t_exact( salt, theta, actual_z )
+        mu_virtual = gsw.chem_potential_water_t_exact( salt, theta, virtual_z )
+
+        # Compute heat input and salinity changes to mixed layer
+        ent_change = self.ds['SHF'] / ( 273.15 + temp_insitu ) / h
+        salt_change = - salt * ( np.abs( self.ds['EVAP_F'] ) \
+                       - self.ds['PREC_F'] ) / h
+
+        heat_contribution = ( temp_insitu - temp_virtual ) * ent_change
+        salt_contribution = ( mu_insitu - mu_virtual ) * salt_change
         
-        # Adiabatic changes to pi2 are thus
-        from_heat = ( sst_insitu - sst_at_zr ) * entropy_change
-        from_salt = ( mu_surf - mu_at_zr ) * salt_change 
-        return from_heat, from_salt
+        return heat_contribution, salt_contribution
 
-
-    def alt_diabatic( self ):
-        # Alternative (better?) method to compute diabatic changes to pi_2
-        # Distribute heat/salinity fluxes throughout ML and use 
-        # entropy derivatives
-
-        # create mask for mixed layer
-        mld = self.ds[ 'HMXL' ] / 100 
-        in_ml = self.ds[ 'z_t' ] <= mld 
-    
-
-        # temp and salinity in ML
-        ml_temp = self.ds[ 'TEMP' ].where( in_ml ).persist()
-        ml_salt = self.ds[ 'SALT' ].where( in_ml ).persist() 
-
-        # reference levels to be used
-        ml_z = self.ds[ 'z_t' ].where( in_ml )
-        ml_zr = self.zr.where( in_ml )
-
-        # in-situ temp and relative potential at z and zr
-        z_temp = gsw.t_from_CT( ml_salt, ml_temp, ml_z )
-        zr_temp = gsw.t_from_CT( ml_salt, ml_temp, ml_zr )
-
-        z_mu = gsw.chem_potential_water_t_exact( ml_salt, z_temp, ml_z )
-        zr_mu = gsw.chem_potential_water_t_exact( ml_salt, zr_temp, ml_zr )
-     
-        # compute diabatic temperature and salinity changes
-        temp_dot = self.ds[ 'SHF' ] / ( 1024 * 4e3 ) / mld
-        salt_dot = ml_salt * ( np.abs( self.ds[ 'EVAP_F' ] ) - self.ds[ 'PREC_F'] ) / mld
 
         # first derivatives of specific entropy
-        det_ds, det_dt = gsw.entropy_first_derivatives( ml_salt.compute() , ml_temp.compute() )
-
-        # finally compute changes to potential energy
-        pi2_temp = ( z_temp - zr_temp ) * ( det_ds * salt_dot + det_dt * temp_dot )
-        pi2_salt = ( z_mu - zr_mu ) * salt_dot 
- 
-        return pi2_temp , pi2_salt 
+        #det_ds, det_dt = gsw.entropy_first_derivatives( ml_salt.compute() , ml_temp.compute() )
 
 
 
