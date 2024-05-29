@@ -393,7 +393,41 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
 
 
 
+    def all_diabatic( self ):
+        # Compute the diabatic change to APE everywhere
+        
+        # actual and reference depths
+        actual_z = self.ds['z_t'].persist()
+        virtual_z = self.zr.persist()
 
+        # Get Theta and Salinity 
+        theta = self.ds['TEMP'].persist()
+        salt = self.ds['SALT'].persist()
+
+        # Compute in-situ temp and chem potential at z and z_r
+        temp_insitu = gsw.t_from_CT( salt, theta, actual_z )
+        temp_virtual = gsw.t_from_CT( salt, theta, virtual_z )
+
+        chem_pot = gsw.chem_potential_water_t_exact; # brevity
+        mu_insitu = chem_pot( salt, theta, actual_z )
+        mu_virtual = chem_pot( salt, theta, virtual_z )
+
+        # Compute diabatic changes in temp and salinity
+        temp_change = self.ds['TEND_TEMP'] - self.ds['ADV_3D_TEMP']
+        salt_change = self.ds['TEND_SALT'] - self.ds['ADV_3D_SALT']
+
+        # Turn those into entropy 
+        entropy_deriv = gsw.entropy_first_derivatives
+        ent_ds, ent_dt = entropy_deriv( salt.compute(), theta.compute() )
+       
+        temp_const = temp_insitu - temp_virtual
+        salt_const = mu_insitu - mu_virtual
+
+        # Heat and salinity contributions to Ea
+        heat_contrib = 1024 * temp_const * ent_dt * temp_change 
+        salt_contrib = 1024 * ( temp_const * ent_ds + salt_const ) * salt_change
+
+        return heat_contrib, salt_contrib
 
 
 
