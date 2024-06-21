@@ -76,6 +76,18 @@ def remove_seasonal( xr_obj , leap_years = False ):
     return xr_obj - recreated
 
 
+def fancy_lagged_correlation( x, y , max_lag = None, dim = 'time'):
+    # Takes in two xr time series and computes lagged correlation with 1-sized steps along dim
+    if max_lag is None:
+        max_lag = int( len( x[ dim ] ) * 0.75 )
+    corr_vals = [ xr.corr( x, y, dim = dim ) ] \
+                 + [ xr.corr( x[n:], y[:-n] ) for n in range(1, max_lag + 1 ) ]
+    corr_inverse = [ xr.corr( y[-m:], x[:m] ) for m in range(-max_lag, 0 ) ]
+    all_corr = corr_inverse + corr_vals
+    lags = [ jj for jj in range( -max_lag, max_lag + 1 ) ] 
+    all_corr = xr.DataArray( data = all_corr, dims = ('lag'), coords = {'lag':lags} )
+    return all_corr
+
 def lagged_correlation(x, y, max_lag = None):
     # Computed lagged correlations between two xr_objs or 1D arrays
     normalize = lambda data : ( data - np.mean( data ) ) \
@@ -131,11 +143,6 @@ def separate_seasons( xr_obj , months = classic_months ):
     by_season = xr.concat( by_season , dim = 'season' )
     return by_season 
 
-
-def lagged_correlation( x , y ):
-    # Lagged correlation between to xr timeseries
-    # to be determined
-    pass 
 
 
 
