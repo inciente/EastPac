@@ -132,5 +132,24 @@ def separate_seasons( xr_obj , months = classic_months ):
     return by_season 
 
 
+def lagged_correlation( x , y ):
+    # Lagged correlation between to xr timeseries
+    # to be determined
+    pass 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -13,7 +13,7 @@ def vertical_chunk( ds, zmax ):
 # Tools to describe the EUC
 def get_euc_area( ds ):
     ds = ds.sel( lat = slice( -3, 3 ) ); # equatorial
-    ds = ds.sel( lon = slice( 125, 280 ) ); # pacific
+    ds = ds.sel( lon = slice( 125, 290 ) ); # pacific
     ds = vertical_chunk( ds, 500 ); # cut from surface to 500 m
     return ds 
 
@@ -23,7 +23,7 @@ def find_euc( ds ):
     # Begin with spatial subsetting
     ds = get_euc_area( ds ); 
     # Now physical / ocean-dependent conditions
-    is_eastward = ds['UVEL'] > 10; # in cm / s 
+    is_eastward = ds['UVEL'] > 5; # in cm / s 
     below_ML = ds['z_t'] > ( ds['HMXL']/100 );
     # Combine masks
     euc_mask = is_eastward * below_ML
@@ -81,5 +81,4 @@ def KE_budget( ds ):
     visc = ( - rho * u * ( ds['VVC'].values * 1e-4  * dudz ).differentiate('z_t') ).persist()
     return  vert, visc 
     
-
 

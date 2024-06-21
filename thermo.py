@@ -17,7 +17,7 @@ def find_z_temp( temp_xr, T = 20 ):
     temp_xr = temp_xr.fillna( -300 ); # replace nans
     depth_index = np.abs( temp_xr - T ).argmin( dim = 'z_t' )
     # Extract corresponding depth values
-    z_temp = ( temp_xr['z_t'] ).isel( z_t = depth_index )
+    z_temp = ( temp_xr['z_t'] ).isel( z_t = depth_index.compute() )
     # Mask out locations where value is at surface (helps with nans)
     z_temp = xr.where( z_temp > 6 , z_temp, np.nan )
     return z_temp
@@ -84,7 +84,7 @@ def pressure( ds , add_atm = None, ref_rho = None,
     # Take output from POP2 (ds) and compute pressure everywhere 
     if ssh_val is not None:
         ds['SSH'] = ds['SSH'] - ssh_val;
-    psurf = ds['SSH'] / 100 * g * rho.isel( z_t = 0 );
+    psurf = ds['SSH'] / 100 * g * 1022;
     
     #if ref_rho is not None:
     #    if ssh_val is not None:
