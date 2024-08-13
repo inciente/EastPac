@@ -223,6 +223,7 @@ def reference_density( ds , subset = None ):
     
     ref_sigma = np.interp( cumulative , np.cumsum( sigmah[0] ), 
                       sigmah[1][0:-1] + 0.125 )
+    #ref_rho = ref_sigma; 
     ref_rho = rho_from_sigma( ref_sigma, ref_z )
 
     # repackage ref_rho as xr.dataarray

@@ -230,6 +230,9 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         self.rho_ref = rho_ref;
         # save rho values, since they will be used again and again
         self.rho = ( self.ds['RHO'] * 1000 ).persist(); 
+        # estimating as sigma0
+        #self.rho = ( 1000 + gsw.sigma0( self.ds['SALT'] , self.ds['TEMP'] ) ).persist(); 
+
         self.nan_mask = ~ np.isnan( self.rho ); # useful to have
         # compute zr, since it will also be needed repeatedly
         self.zr = self.get_zr().persist()
@@ -304,16 +307,23 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         pi2 = 9.81 * ( self.zr - self.ds['z_t'] ) + self.enthalpy_diff()
         return pi2
 
+    def displacement_points( self ):
+        # Return array of points between zr and z to help with integrals.
+        
+        # determine z-range by stacking z and zr along new dimension
+        zrange = xr.concat( [ self.zr.expand_dims( {'zprime' : [0] } ) , 
+                    self.ds['z_t'].expand_dims( {'zprime' : [1] } ) ] , dim = 'zprime' )
+        zrange = zrange.interp( zprime = np.arange( 0.05, 0.96, 0.1 ) ); 
+        # zrange is now an array with 10 points inbetween zr and z.
+        return zrange
+
+
     def boussinesq_PI2( self ):
         # Get Boussinesq expression of APE. 
         # begin with vertical displacement
         DZ = self.zr - self.ds['z_t'] ;
-
         # z-range over which density differences will be integrated
-        zrange = xr.concat( [ self.zr.expand_dims( { 'zprime' : [0] } ) , 
-                        self.ds['z_t'].expand_dims( {'zprime' : [1] } ) ] , 
-                        dim = 'zprime' )
-        zrange = zrange.interp( zprime = np.arange( 0.05, 0.96, 0.1 ) ) ;
+        zrange = self.displacement_points()
 
         # Evaluate reference and virtual densities at zrange pressures
         # This creates a new dimension zprime
@@ -321,7 +331,7 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         rho_actual_eval = gsw.rho( self.ds['SALT'] , self.ds['TEMP'] , zrange )
  
         # now integrate over zprime
-        pi2 = 9.81 * ( 1 - rho_0_eval / rho_actual_eval ).mean( 'zprime' ) * DZ 
+        pi2 = 9.81 / 1024 * ( rho_actual_eval - rho_0_eval ).mean( 'zprime' ) * DZ 
           
         return pi2
         
@@ -390,7 +400,27 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         # first derivatives of specific entropy
         #det_ds, det_dt = gsw.entropy_first_derivatives( ml_salt.compute() , ml_temp.compute() )
 
+    def boussinesq_diabatic( self ):
+        # Compute diabatic changes to Ea following Eqs. 2.15-2.17 in Tailleux (JFM, 2013)
+        # This might be computationally simpler than the method in self.all_diabatic
+        theta = self.ds['TEMP'].persist()
+        salt = self.ds['SALT'].persist()
+        DZ = self.zr - self.ds['z_t']; 
 
+        # zrange for integration between zr and z
+        zrange = self.displacement_points()
+        
+        # evaluate and integrate alpha and beta there
+        alpha = gsw.alpha( salt, theta, zrange )
+        beta = gsw.beta( salt, theta, zrange )
+        # "integrate" over zrange
+        G_theta = - 9.81 * alpha.mean('zprime') * DZ
+        G_salt = - 9.81 * beta.mean('zprime') * DZ
+
+        # now multiply times diabatic changes to tempreature and salinity
+        heat_contrib = 1024 * G_theta * ( self.ds['TEND_TEMP'] - self.ds['ADV_3D_TEMP'] )
+        salt_contrib = 1024 * G_salt * ( self.ds['TEND_SALT'] - self.ds['ADV_3D_SALT'] )
+        return heat_contrib, salt_contrib
 
 
     def all_diabatic( self ):
