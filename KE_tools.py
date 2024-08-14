@@ -230,11 +230,9 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         self.rho_ref = rho_ref;
         # save rho values, since they will be used again and again
         self.rho = ( self.ds['RHO'] * 1000 ).persist(); 
-        # estimating as sigma0
-        #self.rho = ( 1000 + gsw.sigma0( self.ds['SALT'] , self.ds['TEMP'] ) ).persist(); 
-
         self.nan_mask = ~ np.isnan( self.rho ); # useful to have
         # compute zr, since it will also be needed repeatedly
+        self.compressibility = 1024e4 * gsw.kappa( self.ds['SALT'], self.ds['TEMP'], self.ds['z_t'] ).persist()
         self.zr = self.get_zr().persist()
 
     @property
@@ -260,6 +258,21 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
             raise Exception('Dataset and reference density have different vertical coordinates')
         self._rho_ref = rho
 
+    def zr_second_iteration( self, zr1 ):
+        # Use linear approximation to correct the first estimate of zr
+        # this is meant to account for the compressibility of a water
+        # parcel as it moves from z to zr 
+        
+        # start with vertical gradient of reference density profile
+        drho_ref = - self.rho_ref.differentiate( 'z_t' ).interp( z_t = zr1 ); 
+        zr2 = self.compressibility * ( zr1 - self.ds['z_t'] ) / ( self.compressibility - drho_ref ) + zr1
+        # keep old estimate wherever zr2 is negative or nan
+        zr2_bad = ( np.isnan( zr2 ) + zr2 < 5 ) > 0 ; 
+        #zr2 = zr2.where( ~ np.isnan( zr2 ) , other = zr1 );
+        #zr2 = zr2.where( zr2 >= 5 , other = 5 );
+        zr2 = zr2.where( ~ zr2_bad , other = zr1 );
+        return zr2
+        
 
     def get_zr( self ):
         # Use ref_rho to assign a reference level to all rho(x,y,z)
@@ -270,9 +283,11 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
 
         # Now interpolate to values of rho
         zr = flipped_ref.interp( rho = self.rho, kwargs = {'fill_value':'extrapolate' } )
-        # Set zr = 5 wherever it is lower than that
-        nan_mask = ~ np.isnan( zr );
+        #zr = self.zr_second_iteration( zr ); # 
+        # Set zr = 5 meters wherever it is lower than that (model resolution)
+        nan_mask = ~ np.isnan( zr ); # unable to find zr for some depths
         zr = zr.where( zr > 5 , other = 5 ).where( nan_mask );
+        zr = self.zr_second_iteration( zr ); # account for compressibility
         return zr
 
     def reference_pressure( self ):
@@ -317,8 +332,13 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         # zrange is now an array with 10 points inbetween zr and z.
         return zrange
 
+    def rho_linear_compression( self, displacements ):
+        # Use compressibility to adjust rho along displacements
+        drho = self.compressibility * displacements # these might be along new dimension
+        new_rho = self.rho + drho # add to rho at actual position
+        return new_rho  
 
-    def boussinesq_PI2( self ):
+    def boussinesq_PI2( self, compress = True ):
         # Get Boussinesq expression of APE. 
         # begin with vertical displacement
         DZ = self.zr - self.ds['z_t'] ;
@@ -328,7 +348,12 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         # Evaluate reference and virtual densities at zrange pressures
         # This creates a new dimension zprime
         rho_0_eval = self.rho_ref.interp( z_t = zrange ); 
-        rho_actual_eval = gsw.rho( self.ds['SALT'] , self.ds['TEMP'] , zrange )
+        if compress:
+            # New way to do it, use the model's rho and gsw compressibility (linear) 
+            rho_actual_eval = self.rho + ( zrange - self.ds['z_t'] ) * self.compressibility
+        else:
+            # OLD WAY TO DO IT, USING GSW EQUATION OF STATE
+            rho_actual_eval = gsw.rho( self.ds['SALT'] , self.ds['TEMP'] , zrange )
  
         # now integrate over zprime
         pi2 = 9.81 / 1024 * ( rho_actual_eval - rho_0_eval ).mean( 'zprime' ) * DZ 
