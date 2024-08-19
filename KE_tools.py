@@ -387,43 +387,9 @@ All quantities will be computed for all spatial domain in ds, so subset ds befor
         if three_d:
             oz = - xr_obj.differentiate('z_t')
             advec = advec + oz * self.ds['WVEL'].values
-        
+        # divide over 100 because velocities are in cm/s
         return advec/100 
 
-    def ML_diabatic( self ):
-        # Compute the diabatic change to APE in the mixed layer
-        # Get ML mask plus 5 meters
-        h = self.ds['HMXL'] / 100 + 5
-        ml_mask = self.ds['z_t'] < h
-        
-        # actual and reference depths
-        actual_z = self.ds['z_t'].where( ml_mask ).persist()
-        virtual_z = self.zr.where( ml_mask ).persist()
-
-        # Get Theta and Salinity in mixed layer
-        theta = self.ds['TEMP'].where( ml_mask ).persist()
-        salt = self.ds['SALT'].where( ml_mask ).persist()
-
-        # Compute in-situ temperature and chem potential at z and z_r
-        temp_insitu = gsw.t_from_CT( salt, theta, actual_z )
-        temp_virtual = gsw.t_from_CT( salt, theta, virtual_z )
-
-        mu_insitu = gsw.chem_potential_water_t_exact( salt, theta, actual_z )
-        mu_virtual = gsw.chem_potential_water_t_exact( salt, theta, virtual_z )
-
-        # Compute heat input and salinity changes to mixed layer
-        ent_change = self.ds['SHF'] / ( 273.15 + temp_insitu ) / h
-        salt_change = - salt * ( np.abs( self.ds['EVAP_F'] ) \
-                       - self.ds['PREC_F'] ) / h
-
-        heat_contribution = ( temp_insitu - temp_virtual ) * ent_change
-        salt_contribution = ( mu_insitu - mu_virtual ) * salt_change
-        
-        return heat_contribution, salt_contribution
-
-
-        # first derivatives of specific entropy
-        #det_ds, det_dt = gsw.entropy_first_derivatives( ml_salt.compute() , ml_temp.compute() )
 
     def boussinesq_diabatic( self ):
         # Compute diabatic changes to Ea following Eqs. 2.15-2.17 in Tailleux (JFM, 2013)
