@@ -2,6 +2,7 @@
 import xarray as xr; import numpy as np; 
 import pandas as pd; import sys, os, time;
 import shapely as shp
+import metpy 
 
 # Other packages within EastPac repo
 import thermo; 
@@ -32,15 +33,13 @@ def ocn_zonal_integral( ds, xr_obj ):
 # ------------ ATMOSPHERIC ROUTINES ------------------
 
 def atm_vertical_integral( ds, xr_obj ):
-    # Integrate xr_obj with respect to pressure, dividing by g.
+    # Integrate xr_obj with respect to pressure, dividing by g (mass-weighted integral).
     # grid information is stored in ds
-    layer_thickness = xr.DataArray( data = np.diff( ds['ilev'].values ),                         dims = ('lev') , coords = {'lev':ds['lev'] } )
+    layer_thickness = 100 * xr.DataArray( data = np.diff( ds['ilev'].values ),                     
+                          dims = ('lev') , coords = {'lev':ds['lev'] } ); # in Pa
     vert_integ = ( layer_thickness * xr_obj ).sum( 'lev' ) / 9.81
     return vert_integ 
 
-def ocn_zonal_integral( ds, xr_obj ):
-    dx, dy = thermo.get_dx_dy( ds )
-    
 
 def atm_OLR( ds , integrate = True ):
     # Input is xr.Dataset from CAM6
