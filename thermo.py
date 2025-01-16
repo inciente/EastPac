@@ -76,7 +76,7 @@ def get_dx_dy( xr_obj ):
 def get_dz( xr_obj , source = 'ocn' ):
     dz = np.abs( xr_obj['z_w_top'].values - xr_obj['z_w_bot'].values )
     dz = xr.DataArray( data = dz, coords = {'z_t':xr_obj['z_t']} )
-    return dz 
+    return dz / 100
 
 def heat_per_cell( ocn_xr ):
     # Amount of heat in each grid cell, relative to T = 0 Celsius
