@@ -48,10 +48,11 @@ def get_dx_dy( xr_obj ):
     except:
         dy = None; # in case object has no lat 
     return dx, dy
+
 '''
 
 
-def get_dx_dy( xr_obj ):
+def get_dx_dy( ds ):
     # Use CESM2 lat lon data to compute dx, dy for grid cells
     # Get matrices with lat lon points
     lat = ds['ULAT'].isel( time = 0 )
@@ -63,9 +64,9 @@ def get_dx_dy( xr_obj ):
 
     # Prepare to create xr.DataArrays
     coords = { 'lon' : ds['lon'], 'lat' : ds['lat'] }
-    dy = xr.DataArray( data = dy.transpose() , dims = ('lat', 'lon'),
+    dy = xr.DataArray( data = dy , dims = ('lat', 'lon'),
                               coords = coords )
-    dx = xr.DataArray( data = dx.transpose() , dims = ('lat', 'lon'),
+    dx = xr.DataArray( data = dx , dims = ('lat', 'lon'),
                               coords = coords )
     
     return dx, dy 
@@ -74,9 +75,10 @@ def get_dx_dy( xr_obj ):
 
 
 def get_dz( xr_obj , source = 'ocn' ):
+    # Assumes that vertical coordinates were already converted to meters
     dz = np.abs( xr_obj['z_w_top'].values - xr_obj['z_w_bot'].values )
     dz = xr.DataArray( data = dz, coords = {'z_t':xr_obj['z_t']} )
-    return dz / 100
+    return dz 
 
 def heat_per_cell( ocn_xr ):
     # Amount of heat in each grid cell, relative to T = 0 Celsius
