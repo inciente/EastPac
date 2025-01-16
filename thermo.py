@@ -29,6 +29,7 @@ def area_weights( xr_obj ):
     weights.name = 'weights'
     return weights
 
+'''
 def get_dx_dy( xr_obj ):
     # Get xy grid with dx and dy for xarray object in meteres
     # use for diffrentiation or for computing area integrals
@@ -47,6 +48,30 @@ def get_dx_dy( xr_obj ):
     except:
         dy = None; # in case object has no lat 
     return dx, dy
+'''
+
+
+def get_dx_dy( xr_obj ):
+    # Use CESM2 lat lon data to compute dx, dy for grid cells
+    # Get matrices with lat lon points
+    lat = ds['ULAT'].isel( time = 0 )
+    lon = ds['ULONG'].isel( time = 0 )
+    # Size along each dimension
+    dy = ( np.gradient( lat, axis = 0 ) * 110e3 )
+    norm = np.cos( lat / 180 * np.pi ).values
+    dx = np.gradient( lon, axis = 1 ) * 110e3 * norm
+
+    # Prepare to create xr.DataArrays
+    coords = { 'lon' : ds['lon'], 'lat' : ds['lat'] }
+    dy = xr.DataArray( data = dy.transpose() , dims = ('lat', 'lon'),
+                              coords = coords )
+    dx = xr.DataArray( data = dx.transpose() , dims = ('lat', 'lon'),
+                              coords = coords )
+    
+    return dx, dy 
+
+
+
 
 def get_dz( xr_obj , source = 'ocn' ):
     dz = np.abs( xr_obj['z_w_top'].values - xr_obj['z_w_bot'].values )
