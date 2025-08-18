@@ -48,7 +48,7 @@ def seasonal_cycle( data, n_terms, leap_years = True ):
         return None
 
     # Create sine cosine fit matrix
-    fit_mat = seasonal_matrix( data['time'], n_terms, leap_years )
+    fit_mat = seasonal_matrix( data['Time'], n_terms, leap_years )
 
     # Obtain coefficients for all terms
     coefs, res = solve_least_squares( fit_mat, data )
