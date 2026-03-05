@@ -44,7 +44,7 @@ def get_sigma_ref( ds ):
     #print(n)
     # Organize into a small xr obj
     space = xr.DataArray( data = bins[:-1] + dz / 2 , dims = ('cdf'), 
-                                   coords = { 'cdf' : n } ).groupby( 'cdf' ).mean()
+                                   coords = { 'cdf' : n } ).groupby('cdf').mean()
     
     
     # Get cdf for density of water masses in ds
@@ -67,7 +67,8 @@ def get_sigma_ref( ds ):
     # get rid of nan values
     sigma_ref = sigma_ref[ ~np.isnan( sigma_ref['z'] ) ]
     # add extra level at surface with lightest density
-    sigma_ref = sigma_ref.interp( z = ds['refZMid'] , method = 'linear', 
+    single_z = ds['zMid'].sel( {'lon':180, 'lat':0}, method = 'nearest' )
+    sigma_ref = sigma_ref.interp( z = single_z , method = 'linear', 
                                  kwargs = {'fill_value' : 'extrapolate' } )
     sigma_ref = sigma_ref.rename( {'nVertLevels':'z'} ); 
     return sigma_ref 

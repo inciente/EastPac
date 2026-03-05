@@ -21,9 +21,9 @@ def deriv_z( xr_obj , ds ):
     # Get information about vertical dimension
     #zind = find_dim_index( xr_obj , 'nVertLevels' )
     #dz = np.diff( ds[ 'zMid' ].values , axis = zind )
-    dz = ds['zMid'].differentiate( 'nVertLevels' )
+    dz = ds['zMid'].compute().differentiate( 'nVertLevels' )
 
-    return xr_obj.differentiate( 'nVertLevels' ) / dz
+    return xr_obj.compute().differentiate( 'nVertLevels' ) / dz
 
 
 def gradient_vec( xr_obj, ds ):
